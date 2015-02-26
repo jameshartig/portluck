@@ -1,6 +1,6 @@
 {
   "name": "portluck",
-  "version": "0.0.2-alpha.1",
+  "version": "0.0.2-alpha.2",
   "description": "A unified HTTP/TCPSocket/WebSocket server for receiving arbitrary data",
   "main": "server.js",
   "directories": {
@@ -18,7 +18,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/fastest963/webport.git"
+    "url": "git://github.com/fastest963/portluck.git"
   },
   "engines": {"node": ">=0.10.36"},
   "engineStrict": true,
