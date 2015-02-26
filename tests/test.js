@@ -32,11 +32,18 @@ exports.testSimpleSocket = function(test) {
     conn = net.createConnection(listenOptions, function() {
         conn.end(testString + "\n");
     });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.done();
+    });
 };
 
 exports.testSimpleHTTP = function(test) {
     test.expect(3);
-    var conn;
+    var receivedResp = false,
+        receivedDisconnect = false,
+        conn;
     server.once('clientConnect', function(socket) {
         test.equal(socket.remoteAddress, listenOptions.host);
     });
@@ -44,13 +51,25 @@ exports.testSimpleHTTP = function(test) {
         test.strictEqual(message.toString(), testString);
     });
     server.once('clientDisconnect', function(socket) {
-        process.nextTick(function() {
+        //wait for the response if we haven't already gotten it
+        if (receivedResp) {
             test.done();
-        });
+        }
+        receivedDisconnect = true;
     });
     conn = http.request(httpOptions, function(resp) {
         test.equal(resp.statusCode, 200);
+        if (receivedDisconnect) {
+            test.done();
+        }
+        receivedResp = true;
     });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.done();
+    });
+    //send our post body and finish
     conn.write(testString);
     conn.end();
 };

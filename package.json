@@ -7,7 +7,7 @@
     "test": "tests"
   },
   "dependencies": {
-    "delimiterstream": "0.3.0-alpha.0",
+    "delimiterstream": "0.3.0-alpha.2",
     "ws": "^0.7.0"
   },
   "devDependencies": {

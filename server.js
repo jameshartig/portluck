@@ -17,13 +17,18 @@ for (i = 0; i < 12; i++) {
     _METHODS_[i] = _METHODSSTR_.charCodeAt(i);
 }
 
-function onConnection(self, socket) {
+function onConnection(server, socket) {
     var isHTTP = false,
         isRaw = false,
         isError = false;
 
-    //set our timeout so we don't wait forever
-    socket.setTimeout(self.timeout);
+    //set our timeout to something really low so we don't wait forever for the first byte
+    socket.setTimeout(Math.min(server.timeout, 30 * 1000));
+    socket.once('timeout', function() {
+        if (!socket.ended) {
+            socket.destroy();
+        }
+    });
 
     socket.on('data', function onData(data) {
         //data is a buffer
@@ -63,8 +68,9 @@ function onConnection(self, socket) {
             break;
         }
         if (isError) {
-            console.log("error");
-            socket.destroy();
+            if (!socket.ended) {
+                socket.destroy();
+            }
             return;
         }
         if (!isHTTP && !isRaw) {
@@ -73,10 +79,18 @@ function onConnection(self, socket) {
 
         //clean up our listener before we pass onto http/raw sockets
         socket.removeListener('data', onData);
+
+        //if somehow the socket ended already just bail
+        if (!socket.readable || !socket.writable || socket.ended) {
+            if (!socket.ended) {
+                socket.end();
+            }
+            return;
+        }
         if (isHTTP) {
-            httpConnectionListener(self, socket);
+            httpConnectionListener(server, socket);
         } else {
-            rawConnectionListener(self, socket);
+            rawConnectionListener(server, socket);
         }
         //re-send our data we just got to emulate this listener
         socket.emit('data', data);
@@ -93,16 +107,12 @@ function onNewClient(server, socket) {
 }
 
 function httpConnectionListener(server, socket) {
+    socket.setTimeout(server.timeout);
     http._connectionListener.call(server, socket);
 }
 
 function rawConnectionListener(server, socket) {
-    if (!socket.readable || !socket.writable) {
-        if (!socket.ended) {
-            socket.end();
-        }
-        return;
-    }
+    socket.setTimeout(server.timeout);
     onNewClient(server, socket);
     listenForDelimiterData(server, socket);
 
