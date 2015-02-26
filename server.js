@@ -30,6 +30,13 @@ function onConnection(server, socket) {
         }
     });
 
+    //since the http server is setup with allowHalfOpen, we need to end when we get a FIN
+    socket.once('end', function() {
+        if (!socket.ended) {
+            socket.end();
+        }
+    });
+
     socket.on('data', function onData(data) {
         //data is a buffer
         for (var i = 0; i < data.length; i++) {
@@ -87,6 +94,8 @@ function onConnection(server, socket) {
             }
             return;
         }
+        //set the timeout now to the value the user wants
+        socket.setTimeout(server.timeout);
         if (isHTTP) {
             httpConnectionListener(server, socket);
         } else {
@@ -112,21 +121,12 @@ function onNewClient(server, socket) {
 }
 
 function httpConnectionListener(server, socket) {
-    socket.setTimeout(server.timeout);
     http._connectionListener.call(server, socket);
 }
 
 function rawConnectionListener(server, socket) {
-    socket.setTimeout(server.timeout);
     onNewClient(server, socket);
     listenForDelimiterData(server, socket);
-
-    //since the http server is setup with allowHalfOpen, we need to end when we get a FIN
-    socket.once('end', function() {
-        if (!socket.ended) {
-            socket.end();
-        }
-    });
 }
 
 function listenForDelimiterData(server, socket) {
@@ -138,13 +138,15 @@ function listenForDelimiterData(server, socket) {
 }
 
 function onUpgrade(req, socket, upgradeHead) {
-    var self = this;
+    var server = this;
     this._wss.handleUpgrade(req, socket, upgradeHead, function(client) {
         if (socket.readable && socket.writable) {
-            onNewClient(self, socket);
+            onNewClient(server, socket);
         }
+        //ws resets the timeout to 0 for some reason but we want to keep it what the user wants
+        socket.setTimeout(server.timeout);
         client.on('message', function(data, opts) {
-            parentEmit.call(self, 'message', opts.buffer || data, socket);
+            parentEmit.call(server, 'message', opts.buffer || data, socket);
         });
     });
 }

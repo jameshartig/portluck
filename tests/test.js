@@ -18,8 +18,14 @@ exports.setUp = function(callback) {
 
 
 exports.testSimpleSocket = function(test) {
-    test.expect(2);
+    test.expect(3);
     var conn;
+    function testNoConnectionsLeft() {
+        server.getConnections(function(err, count) {
+            test.equal(count, 0)
+            test.done();
+        });
+    }
     server.once('clientConnect', function(socket) {
         test.equal(socket.remoteAddress, listenOptions.host);
     });
@@ -27,7 +33,7 @@ exports.testSimpleSocket = function(test) {
         test.strictEqual(message.toString(), testString);
     });
     server.once('clientDisconnect', function(socket) {
-        test.done();
+        testNoConnectionsLeft();
     });
     conn = net.createConnection(listenOptions, function() {
         conn.end(testString + "\n");
@@ -40,10 +46,16 @@ exports.testSimpleSocket = function(test) {
 };
 
 exports.testSimpleHTTP = function(test) {
-    test.expect(3);
+    test.expect(4);
     var receivedResp = false,
         receivedDisconnect = false,
         conn;
+    function testNoConnectionsLeft() {
+        server.getConnections(function(err, count) {
+            test.equal(count, 0)
+            test.done();
+        });
+    }
     server.once('clientConnect', function(socket) {
         test.equal(socket.remoteAddress, listenOptions.host);
     });
@@ -53,14 +65,14 @@ exports.testSimpleHTTP = function(test) {
     server.once('clientDisconnect', function(socket) {
         //wait for the response if we haven't already gotten it
         if (receivedResp) {
-            test.done();
+            testNoConnectionsLeft();
         }
         receivedDisconnect = true;
     });
     conn = http.request(httpOptions, function(resp) {
         test.equal(resp.statusCode, 200);
         if (receivedDisconnect) {
-            test.done();
+            testNoConnectionsLeft();
         }
         receivedResp = true;
     });
