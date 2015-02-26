@@ -11,7 +11,7 @@ exports.setUp = function(callback) {
     if (listening) {
         return;
     }
-    server.listen(listenOptions, callback);
+    server.listen(listenOptions.port, listenOptions.host, callback);
     //we don't care if we die and the server is still around
     server.unref();
 };

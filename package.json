@@ -20,7 +20,7 @@
     "type": "git",
     "url": "git://github.com/fastest963/webport.git"
   },
-  "engines": {"node": ">=0.8.28"},
+  "engines": {"node": ">=0.10.36"},
   "engineStrict": true,
   "keywords": ["http", "websocket", "tcpsocket", "socket", "server", "port"],
   "author": "James Hartig <fastest963@gmail.com>",

@@ -93,7 +93,12 @@ function onConnection(server, socket) {
             rawConnectionListener(server, socket);
         }
         //re-send our data we just got to emulate this listener
-        socket.emit('data', data);
+        //ondata is for backwards-compatibility with 0.10.x
+        if (typeof socket.ondata === 'function') {
+            socket.ondata(data, 0, data.length);
+        } else {
+            socket.emit('data', data);
+        }
     });
 }
 
