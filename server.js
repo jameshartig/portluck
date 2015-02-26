@@ -1,8 +1,9 @@
 var net = require('net'),
     http = require('http'),
     util = require('util'),
-    DelimiterStream = require('DelimiterStream'),
-    WebSocketServer = require('ws').Server;
+    DelimiterStream = require('delimiterstream'),
+    WebSocketServer = require('ws').Server,
+    parentEmit;
 
 var _CR_ = "\r".charCodeAt(0),
     _LF_ = "\n".charCodeAt(0),
@@ -29,13 +30,11 @@ function onConnection(self, socket) {
         for (var i = 0; i < data.length; i++) {
             //ignore these
             if (data[i] === _CR_ || data[i] === _LF_ || data[i] === _SPACE_) {
-                console.log("Ignoring newlines or spaces");
                 continue;
             }
             //check to see if its a { (start of json blob) or if its one of the HTTP methods
             //otherwise its an error
             if (data[i] === _OBRACKET_) {
-                console.log("Received OBRACKET.");
                 isRaw = true;
                 break;
             }
@@ -64,7 +63,7 @@ function onConnection(self, socket) {
             break;
         }
         if (isError) {
-            console.log("Destroying becuase of error");
+            console.log("error");
             socket.destroy();
             return;
         }
@@ -75,10 +74,8 @@ function onConnection(self, socket) {
         //clean up our listener before we pass onto http/raw sockets
         socket.removeListener('data', onData);
         if (isHTTP) {
-            console.log("Switching to HTTP");
             httpConnectionListener(self, socket);
         } else {
-            console.log("Switching to raw");
             rawConnectionListener(self, socket);
         }
         //re-send our data we just got to emulate this listener
@@ -86,15 +83,55 @@ function onConnection(self, socket) {
     });
 }
 
-function httpConnectionListener(self, socket) {
-    http._connectionListener.call(self, socket);
+function onNewClient(server, socket) {
+    parentEmit.call(server, 'clientConnect', socket);
+    socket.once('close', function() {
+        //clean up any listeners on data since we already sent that we're disconnected
+        socket.removeAllListeners('data');
+        parentEmit.call(server, 'clientDisconnect', socket);
+    });
 }
 
-function rawConnectionListener(self, socket) {
-    socket.on('data', self._delimiterWrap);
-    /*socket.once('end', function() {
-        socket.off('data', self._delimiterWrap);
-    });*/
+function httpConnectionListener(server, socket) {
+    http._connectionListener.call(server, socket);
+}
+
+function rawConnectionListener(server, socket) {
+    if (!socket.readable || !socket.writable) {
+        if (!socket.ended) {
+            socket.end();
+        }
+        return;
+    }
+    onNewClient(server, socket);
+    listenForDelimiterData(server, socket);
+
+    //since the http server is setup with allowHalfOpen, we need to end when we get a FIN
+    socket.once('end', function() {
+        if (!socket.ended) {
+            socket.end();
+        }
+    });
+}
+
+function listenForDelimiterData(server, socket) {
+    //todo: allow passing in custom delimiter
+    var delimiterWrap = DelimiterStream.wrap(function(data) {
+        parentEmit.call(server, 'message', data, socket);
+    });
+    socket.on('data', delimiterWrap);
+}
+
+function onUpgrade(req, socket, upgradeHead) {
+    var self = this;
+    this._wss.handleUpgrade(req, socket, upgradeHead, function(client) {
+        if (socket.readable && socket.writable) {
+            onNewClient(self, socket);
+        }
+        client.on('message', function(data, opts) {
+            parentEmit.call(self, 'message', opts.buffer || data, socket);
+        });
+    });
 }
 
 function Portluck(messageListener) {
@@ -108,55 +145,49 @@ function Portluck(messageListener) {
         this.addListener('message', messageListener);
     }
 
+    //we need to *have* a listener for 'upgrade' so it emits the event in http.Server
+    //we won't be letting this event actually fire though in our emit
+    this.addListener('upgrade', onUpgrade);
+
     //"start" the websocket server
     this._wss = new WebSocketServer({noServer: true});
-    //todo: allow passing in custom delimiter
-    this._delimiterWrap = DelimiterStream.wrap(function(data) {
-        this.emit('message', data);
-    }, this);
 }
 util.inherits(Portluck, http.Server);
+parentEmit = http.Server.prototype.emit;
 
 //override a bunch of the events
 Portluck.prototype.emit = function(type) {
-    var self = this,
-        req, data, resp;
+    var msg, resp;
     switch (type) {
         case 'connection': //socket
             onConnection(this, arguments[1]);
             break;
-        case 'request': //req, resp
+        case 'request': //msg, resp
             //take over the default HTTP "request" event so we can publish message
-            req = arguments[1];
+            msg = arguments[1];
             resp = arguments[2];
-            if (req.method !== 'POST' && req.method !== 'PUT') {
+            if (msg.method !== 'POST' && msg.method !== 'PUT') {
                 //405 means "Method Not Allowed"
                 resp.writeHead(405, {Allow: 'POST,PUT', 'Content-Type': 'text/plain'});
                 resp.end('Allowed methods are POST or PUT.');
+                break;
             }
-            //for a post/put the request can just be treated like a socket
-            rawConnectionListener(this, req);
-            //on end though we need to write a response and trigger a delimiter
             //when the POST body ends we should trigger a message for whatever is left over
-            req.once('end', function() {
+            msg.once('end', function() {
                 //todo: when we allow a custom delimiter, send it here
-                self._delimiterWrap(_LF_);
+                msg.emit('data', _LF_);
                 resp.writeHead(200);
                 resp.end();
             });
+            onNewClient(this, msg.socket);
+            //for a post/put the request can just be treated like a socket
+            listenForDelimiterData(this, msg);
             break;
         case 'upgrade': //req, socket, upgradeHead
-            this._wss.handleUpgrade.call(arguments[1], arguments[2], arguments[3], function(client) {
-                console.log('connected!');
-                //self.emit('connection', client);
-            });
-            break;
-        case 'data': //data
-            //let the delimiter stream handle emitting message
-            this._delimiterWrap(arguments[0]);
+            onUpgrade.call(this, arguments[1], arguments[2], arguments[3]);
             break;
         default:
-            http.Server.prototype.emit.apply(this, Array.prototype.slice.call(arguments, 0));
+            parentEmit.apply(this, Array.prototype.slice.call(arguments, 0));
             return;
     }
 };
