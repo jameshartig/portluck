@@ -17,6 +17,52 @@ for (i = 0; i < 12; i++) {
     _METHODS_[i] = _METHODSSTR_.charCodeAt(i);
 }
 
+function ResponseWriter(client) {
+    this._client = client;
+    if (!this._client) {
+        throw new TypeError('Invalid client sent to ResponseWriter');
+    }
+    this._encoding = undefined;
+}
+ResponseWriter.prototype.setDefaultEncoding = function(encoding) {
+    if (encoding === 'binary' || encoding === 'buffer') {
+        this._encoding = 'buffer';
+        return;
+    }
+    if (encoding === null){
+        encoding = undefined;
+    }
+    this._encoding = encoding;
+};
+ResponseWriter.prototype.write = function(message) {
+    if (this._client instanceof net.Socket) {
+        this._client.write(message, this._encoding);
+    } else {
+        //otherwise its a websocket
+        var options = {binary: false};
+        if (this._encoding === undefined) {
+            options.binary = (message instanceof Buffer);
+        } else if (this._encoding === 'buffer') {
+            options.binary = true;
+        }
+        this._client.send(message, options);
+    }
+};
+ResponseWriter.prototype.end = function() {
+    if (this._client instanceof net.Socket) {
+        this._client.end();
+    } else {
+        this._client.close();
+    }
+};
+ResponseWriter.prototype.destroy = function() {
+    if (this._client instanceof net.Socket) {
+        this._client.destroy();
+    } else {
+        this._client.terminate();
+    }
+};
+
 function onConnection(server, socket) {
     var isHTTP = false,
         isRaw = false,
@@ -112,7 +158,8 @@ function onConnection(server, socket) {
 }
 
 function onNewClient(server, socket) {
-    parentEmit.call(server, 'clientConnect', socket);
+    var writer = new ResponseWriter(socket);
+    parentEmit.call(server, 'clientConnect', socket, writer);
     socket.once('close', function() {
         //clean up any listeners on data since we already sent that we're disconnected
         socket.removeAllListeners('data');
@@ -131,22 +178,22 @@ function rawConnectionListener(server, socket) {
 
 function listenForDelimiterData(server, socket) {
     //todo: allow passing in custom delimiter
-    var delimiterWrap = DelimiterStream.wrap(function(data) {
-        parentEmit.call(server, 'message', data, socket);
-    });
+    var writer = new ResponseWriter(socket),
+        delimiterWrap = DelimiterStream.wrap(function(data) {
+            parentEmit.call(server, 'message', data, socket, writer);
+        });
     socket.on('data', delimiterWrap);
 }
 
 function onUpgrade(req, socket, upgradeHead) {
     var server = this;
     this._wss.handleUpgrade(req, socket, upgradeHead, function(client) {
-        if (socket.readable && socket.writable) {
-            onNewClient(server, socket);
-        }
+        var writer = new ResponseWriter(client);
+        onNewClient(server, socket, writer);
         //ws resets the timeout to 0 for some reason but we want to keep it what the user wants
         socket.setTimeout(server.timeout);
         client.on('message', function(data, opts) {
-            parentEmit.call(server, 'message', opts.buffer || data, socket);
+            parentEmit.call(server, 'message', opts.buffer || data, socket, writer);
         });
     });
 }

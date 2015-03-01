@@ -7,14 +7,18 @@ Creates a new server that inherits [http.Server](http://nodejs.org/api/http.html
 If `messageCallback` is sent, it will be added as a listener for `"message"` event.
 
 ### Event: 'message' ###
-Fired when a client sends a message. Event is sent `message` which is a buffer and `client` which is the socket that
-sent the message.
+Fired when a client sends a message. Event is sent `(message, socket, writer)`. `message` is a buffer containing
+the message received. `socket` is the socket that sent the message. You should only read properties off the socket,
+like `remoteAddress` and not use the `write`/`end` methods. `writer` is sent last and can be used to respond to the
+message. The `writer` has `write`, `end`, and `destroy` methods.
 
 ### Event: 'clientConnect' ###
-Fired when a client connects. Event is sent `client` which is the socket that connected.
+Fired when a client connects. Event is sent `(socket, writer)` which is the socket that connected. `You should only
+read properties off the socket, like `remoteAddress` and not use the `write`/`end` methods. `writer` is sent last
+and can be used to respond. The `writer` has `write`, `end`, and `destroy` methods.
 
 ### Event: 'clientDisconnect' ###
-Fired when a client disconnects. Event is sent `client` which is the socket that disconnected.
+Fired when a client disconnects. Event is sent `socket` which is the socket that disconnected.
 
 ### server.listen(port [,callback]) ###
 Accepts the same parameters and options as [http.Server.listen](http://nodejs.org/api/http.html#http_server_listen_port_hostname_backlog_callback).

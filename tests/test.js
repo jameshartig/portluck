@@ -16,13 +16,12 @@ exports.setUp = function(callback) {
     server.unref();
 };
 
-
 exports.testSimpleSocket = function(test) {
     test.expect(3);
     var conn;
     function testNoConnectionsLeft() {
         server.getConnections(function(err, count) {
-            test.equal(count, 0)
+            test.equal(count, 0);
             test.done();
         });
     }
@@ -41,7 +40,7 @@ exports.testSimpleSocket = function(test) {
     conn.setTimeout(5000);
     conn.once('timeout', function() {
         conn.destroy();
-        test.done();
+        test.ok(false);
     });
 };
 
@@ -52,7 +51,7 @@ exports.testSimpleHTTP = function(test) {
         conn;
     function testNoConnectionsLeft() {
         server.getConnections(function(err, count) {
-            test.equal(count, 0)
+            test.equal(count, 0);
             test.done();
         });
     }
@@ -79,9 +78,30 @@ exports.testSimpleHTTP = function(test) {
     conn.setTimeout(5000);
     conn.once('timeout', function() {
         conn.destroy();
-        test.done();
+        test.ok(false);
     });
     //send our post body and finish
     conn.write(testString);
     conn.end();
+};
+
+exports.testSocketResponse = function(test) {
+    test.expect(1);
+    var conn;
+    server.once('clientConnect', function(socket, writer) {
+        writer.write(testString);
+    });
+    conn = net.createConnection(listenOptions, function() {
+        conn.end("{}\n");
+    });
+    conn.on('data', function(data) {
+        test.strictEqual(data.toString(), testString);
+        conn.destroy();
+        test.done();
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
 };
