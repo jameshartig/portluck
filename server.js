@@ -2,7 +2,7 @@ var net = require('net'),
     http = require('http'),
     util = require('util'),
     DelimiterStream = require('delimiterstream'),
-    WebSocketServer = require('ws').Server,
+    WebSocket = require('ws'),
     parentEmit;
 
 var _CR_ = "\r".charCodeAt(0),
@@ -35,10 +35,7 @@ ResponseWriter.prototype.setDefaultEncoding = function(encoding) {
     this._encoding = encoding;
 };
 ResponseWriter.prototype.write = function(message) {
-    if (this._client instanceof net.Socket) {
-        this._client.write(message, this._encoding);
-    } else {
-        //otherwise its a websocket
+    if (this._client instanceof WebSocket) {
         var options = {binary: false};
         if (this._encoding === undefined) {
             options.binary = (message instanceof Buffer);
@@ -46,21 +43,23 @@ ResponseWriter.prototype.write = function(message) {
             options.binary = true;
         }
         this._client.send(message, options);
+        return;
     }
+    this._client.write(message, this._encoding);
 };
 ResponseWriter.prototype.end = function() {
-    if (this._client instanceof net.Socket) {
-        this._client.end();
-    } else {
+    if (this._client instanceof WebSocket) {
         this._client.close();
+        return;
     }
+    this._client.end();
 };
 ResponseWriter.prototype.destroy = function() {
-    if (this._client instanceof net.Socket) {
-        this._client.destroy();
-    } else {
+    if (this._client instanceof WebSocket) {
         this._client.terminate();
+        return;
     }
+    this._client.destroy();
 };
 
 function onConnection(server, socket) {
@@ -157,13 +156,36 @@ function onConnection(server, socket) {
     });
 }
 
-function onNewClient(server, socket) {
-    var writer = new ResponseWriter(socket);
+function emitConnect(server, socket, writer) {
     parentEmit.call(server, 'clientConnect', socket, writer);
+}
+function emitDisconnect(server, socket) {
+    parentEmit.call(server, 'clientDisconnect', socket);
+}
+
+function onNewClient(server, socket, writer) {
+    emitConnect(server, socket, writer);
     socket.once('close', function() {
         //clean up any listeners on data since we already sent that we're disconnected
         socket.removeAllListeners('data');
-        parentEmit.call(server, 'clientDisconnect', socket);
+        emitDisconnect(server, socket);
+    });
+}
+//for http we need to listen for close on the socket and NOT the listener >_<
+function onNewHTTPClient(server, listener, socket, writer) {
+    emitConnect(server, socket, writer);
+    socket.once('close', function() {
+        //clean up any listeners on data since we already sent that we're disconnected
+        listener.removeAllListeners('data');
+        emitDisconnect(server, socket);
+    });
+}
+function onNewWSClient(server, listener, socket, writer) {
+    emitConnect(server, socket, writer);
+    listener.once('close', function() {
+        //clean up any listeners on data since we already sent that we're disconnected
+        listener.removeAllListeners('message');
+        emitDisconnect(server, socket);
     });
 }
 
@@ -172,24 +194,24 @@ function httpConnectionListener(server, socket) {
 }
 
 function rawConnectionListener(server, socket) {
-    onNewClient(server, socket);
-    listenForDelimiterData(server, socket);
+    var writer = new ResponseWriter(socket);
+    onNewClient(server, socket, writer);
+    listenForDelimiterData(server, socket, socket, writer);
 }
 
-function listenForDelimiterData(server, socket) {
+function listenForDelimiterData(server, listener, socket, writer) {
     //todo: allow passing in custom delimiter
-    var writer = new ResponseWriter(socket),
-        delimiterWrap = DelimiterStream.wrap(function(data) {
-            parentEmit.call(server, 'message', data, socket, writer);
-        });
-    socket.on('data', delimiterWrap);
+    var delimiterWrap = DelimiterStream.wrap(function(data) {
+        parentEmit.call(server, 'message', data, socket, writer);
+    });
+    listener.on('data', delimiterWrap);
 }
 
 function onUpgrade(req, socket, upgradeHead) {
     var server = this;
     this._wss.handleUpgrade(req, socket, upgradeHead, function(client) {
         var writer = new ResponseWriter(client);
-        onNewClient(server, socket, writer);
+        onNewWSClient(server, client, socket, writer);
         //ws resets the timeout to 0 for some reason but we want to keep it what the user wants
         socket.setTimeout(server.timeout);
         client.on('message', function(data, opts) {
@@ -214,14 +236,14 @@ function Portluck(messageListener) {
     this.addListener('upgrade', onUpgrade);
 
     //"start" the websocket server
-    this._wss = new WebSocketServer({noServer: true});
+    this._wss = new WebSocket.Server({noServer: true});
 }
 util.inherits(Portluck, http.Server);
 parentEmit = http.Server.prototype.emit;
 
 //override a bunch of the events
 Portluck.prototype.emit = function(type) {
-    var msg, resp;
+    var msg, resp, writer;
     switch (type) {
         case 'connection': //socket
             onConnection(this, arguments[1]);
@@ -236,16 +258,17 @@ Portluck.prototype.emit = function(type) {
                 resp.end('Allowed methods are POST or PUT.');
                 break;
             }
+            resp.writeHead(200); //make sure we write the head BEFORE we possibly allow writes
+            writer = new ResponseWriter(resp);
             //when the POST body ends we should trigger a message for whatever is left over
             msg.once('end', function() {
                 //todo: when we allow a custom delimiter, send it here
                 msg.emit('data', _LF_);
-                resp.writeHead(200);
                 resp.end();
             });
-            onNewClient(this, msg.socket);
+            onNewHTTPClient(this, msg, msg.socket, writer);
             //for a post/put the request can just be treated like a socket
-            listenForDelimiterData(this, msg);
+            listenForDelimiterData(this, msg, msg.socket, writer);
             break;
         case 'upgrade': //req, socket, upgradeHead
             onUpgrade.call(this, arguments[1], arguments[2], arguments[3]);
