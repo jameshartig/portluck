@@ -13,7 +13,7 @@ like `remoteAddress` and not use the `write`/`end` methods. `writer` is sent las
 message. The `writer` has `write`, `end`, and `destroy` methods.
 
 ### Event: 'clientConnect' ###
-Fired when a client connects. Event is sent `(socket, writer)` which is the socket that connected. `You should only
+Fired when a client connects. Event is sent `(socket, writer)` which is the socket that connected. You should only
 read properties off the socket, like `remoteAddress` and not use the `write`/`end` methods. `writer` is sent last
 and can be used to respond. The `writer` has `write`, `end`, and `destroy` methods.
 
