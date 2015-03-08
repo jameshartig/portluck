@@ -10,7 +10,12 @@ var net = require('net'),
 if (typeof util.debuglog === 'function') {
     debug = util.debuglog('portluck');
 } else {
-    debug = util.log;
+    //from net.js in v0.10.x tag
+    if (process.env.NODE_DEBUG && /portluck/.test(process.env.NODE_DEBUG)) {
+        debug = util.log;
+    } else {
+        debug = function() {};
+    }
 }
 
 var _CR_ = "\r".charCodeAt(0),
@@ -218,7 +223,7 @@ function onConnection(server, socket) {
         }
     }, 3000);
 
-    function typeDetermined(type, originalData) {
+    function typeDetermined(type) {
         debug('typeDetermined', type);
         if (type === TYPE_ERROR) {
             //todo: emulate parse error from http/https
@@ -244,6 +249,11 @@ function onConnection(server, socket) {
             default:
                 throw new Error('Unknown type determined for socket: ' + type);
                 break;
+        }
+        //need to call ondata for v0.10.x
+        if (typeof socket.ondata === 'function') {
+            var pendingData = socket.read();
+            socket.ondata(pendingData, 0, pendingData.length);
         }
     }
 
@@ -302,24 +312,12 @@ function onConnection(server, socket) {
             socket._readableState.readableListening = false;
             socket._readableState.reading = false;
 
-/*
-            (don't need any of this right now since resume() is working)
-
-            //call read(0) to set needsReadable to true, but first we need to unset reading by calling push('')
-            //see _stream_readable.js readableAddChunk
-            socket.push(_EMPTYBUFFER_);
-            socket.read(0);
-
-            //we need to set sync to true so stream knows to fire the readable on the next tick
-            socket._readableState.sync = true;
-*/
-
             //put all the data we received back on the top of the stream
             //the tls socket will only work if we already have data in the stream
             socket.unshift(receivedData);
 
             //Because of Node Bug #9355, we won't get an error when there's a tls error
-            typeDetermined(resolvedType, receivedData);
+            typeDetermined(resolvedType);
         }
     }
     socket.on('readable', onReadable);

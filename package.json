@@ -20,7 +20,7 @@
     "type": "git",
     "url": "git://github.com/fastest963/portluck.git"
   },
-  "engines": {"node": ">=0.10.36"},
+  "engines": {"node": ">=0.10.33"},
   "engineStrict": true,
   "keywords": ["http", "websocket", "tcpsocket", "socket", "server", "port"],
   "author": "James Hartig <fastest963@gmail.com>",
