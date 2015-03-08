@@ -1,21 +1,54 @@
 var net = require('net'),
     http = require('http'),
+    https = require('https'),
     util = require('util'),
     DelimiterStream = require('delimiterstream'),
     WebSocket = require('ws'),
-    parentEmit;
+    debug, parentEmit;
+
+//v0.10.x doesn't have debuglog
+if (typeof util.debuglog === 'function') {
+    debug = util.debuglog('portluck');
+} else {
+    debug = util.log;
+}
 
 var _CR_ = "\r".charCodeAt(0),
     _LF_ = "\n".charCodeAt(0),
     _SPACE_ = " ".charCodeAt(0),
-    _OBRACKET_ = "{".charCodeAt(0),
     //all the first letters of possible HTTP methods (from http_parser.c line 923)
-    _METHODSSTR_ = "DGHLMNOPRSTU",
-    _METHODS_ = new Array(12),
+    _METHODSCHARS_ = [
+        "C".charCodeAt(0),
+        "D".charCodeAt(0),
+        "G".charCodeAt(0),
+        "H".charCodeAt(0),
+        "O".charCodeAt(0),
+        "P".charCodeAt(0),
+        "T".charCodeAt(0)
+    ],
+    _P_METHODSCHARS_ = [
+        "A".charCodeAt(0),
+        "O".charCodeAt(0),
+        "U".charCodeAt(0)
+    ],
+    _METHODS_ = [
+        new Buffer("CONNECT"),
+        new Buffer("DELETE"),
+        new Buffer("GET"),
+        new Buffer("HEAD"),
+        new Buffer("OPTIONS"),
+        new Buffer("PATCH"),
+        new Buffer("POST"),
+        new Buffer("PUT"),
+        new Buffer("TRACE")
+    ],
+    _MAX_METHOD_LENGTH_ = 7,
+    _TLSRECORD_ = 0x16,
+    _TLS_SSL3_ = 0x03,
+    _TLS_CLIENT_HELLO_ = 0x01,
+    TYPE_ERROR = -1, TYPE_HTTP = 1, TYPE_RAW = 2, TYPE_TLS = 3,
+    bufferConcatArray = new Array(2),
     i;
-for (i = 0; i < 12; i++) {
-    _METHODS_[i] = _METHODSSTR_.charCodeAt(i);
-}
 
 function ResponseWriter(client) {
     this._client = client;
@@ -62,98 +95,238 @@ ResponseWriter.prototype.destroy = function() {
     this._client.destroy();
 };
 
-function onConnection(server, socket) {
-    var isHTTP = false,
-        isRaw = false,
-        isError = false;
-
-    //set our timeout to something really low so we don't wait forever for the first byte
-    socket.setTimeout(Math.min(server.timeout, 30 * 1000));
-    socket.once('timeout', function() {
-        if (!socket.ended) {
-            socket.destroy();
+function validateHTTPMethod(data, index) {
+    var i = index || 0,
+        l = Math.min(i + _MAX_METHOD_LENGTH_, data.length),
+        methodMatch, methodMatchIndex;
+    for (; i < l; i++) {
+        if (data[i] === _SPACE_ || data[i] === _CR_ || data[i] === _LF_) {
+            //ignore leading spaces/newlines/etc
+            continue;
         }
-    });
+        //if you trust benchmarks then switch is faster than indexOf: http://jsperf.com/switch-vs-array/8
+        switch (data[i]) {
+            case _METHODSCHARS_[0]: //C
+                methodMatch = _METHODS_[0];
+                methodMatchIndex = 1;
+                break;
+            case _METHODSCHARS_[1]: //D
+                methodMatch = _METHODS_[1];
+                methodMatchIndex = 1;
+                break;
+            case _METHODSCHARS_[2]: //G
+                methodMatch = _METHODS_[2];
+                methodMatchIndex = 1;
+                break;
+            case _METHODSCHARS_[3]: //H
+                methodMatch = _METHODS_[3];
+                methodMatchIndex = 1;
+                break;
+            case _METHODSCHARS_[4]: //O
+                methodMatch = _METHODS_[4];
+                methodMatchIndex = 1;
+                break;
+            case _METHODSCHARS_[5]: //P
+                switch (data[i + 1]) {
+                    case _P_METHODSCHARS_[0]:
+                        methodMatch = _METHODS_[5];
+                        break;
+                    case _P_METHODSCHARS_[1]:
+                        methodMatch = _METHODS_[6];
+                        break;
+                    case _P_METHODSCHARS_[2]:
+                        methodMatch = _METHODS_[7];
+                        break;
+                    default:
+                        return false;
+                        break;
+                }
+                //we just verified the next char so skip it
+                i++;
+                methodMatchIndex = 2;
+                break;
+            case _METHODSCHARS_[6]: //T
+                methodMatch = _METHODS_[8];
+                methodMatchIndex = 1;
+                break;
+            default:
+                return false;
+                break;
 
-    //since the http server is setup with allowHalfOpen, we need to end when we get a FIN
-    socket.once('end', function() {
+        }
+        //finishing the loop down here so we don't have to check methodMatch !=== undefined at the top every char
+        for (i++; i < l && methodMatchIndex < methodMatch.length; i++, methodMatchIndex++) {
+            if (methodMatch[methodMatchIndex] !== data[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+//via http://security.stackexchange.com/questions/34780/checking-client-hello-for-https-classification
+//also see node_crypto_clienthello.cc ParseRecordHeader
+function validateTLSHello(data, index) {
+    var i = index || 0;
+    for (; i < data.length; i++) {
+        if (data[i] === _SPACE_ || data[i] === _CR_ || data[i] === _LF_) {
+            //ignore leading spaces/newlines/etc
+            continue;
+        }
+        if (data[i] !== _TLSRECORD_ || data[i + 1] !== _TLS_SSL3_) {
+            return false;
+        }
+        if (data[i + 5] !== _TLS_CLIENT_HELLO_) {
+            return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+function onConnection(server, socket) {
+    var resolvedType = 0,
+        receivedData, timeout;
+
+    function triggerClientError(err) {
+        debug('socket error', err);
+        clearTimeout(timeout);
+        server.emit('clientError', err, socket);
+    }
+    function onEnd() {
+        debug('socket end');
         if (!socket.ended) {
             socket.end();
         }
-    });
+    }
+    function onClose() {
+        debug('socket close');
+        triggerClientError('ECONNRESET');
+    }
 
-    socket.on('data', function onData(data) {
+    //we're handling our own timeouts for now
+    socket.setTimeout(0);
+
+    //wait at most 3 seconds to determine type, otherwise either fallback or destroy
+    timeout = setTimeout(function() {
+        if (server.rawFallback) {
+            typeDetermined(TYPE_RAW);
+        } else {
+            //todo: emulate timeout error from http/https
+            triggerClientError('TIMEOUT');
+        }
+    }, 3000);
+
+    function typeDetermined(type, originalData) {
+        debug('typeDetermined', type);
+        if (type === TYPE_ERROR) {
+            //todo: emulate parse error from http/https
+            triggerClientError('PARSE_ERROR');
+            return;
+        }
+        //if somehow the socket ended already just bail
+        if (!socket.readable || !socket.writable || socket.ended) {
+            return;
+        }
+        //set the timeout now to the value the user wants
+        socket.setTimeout(server.timeout);
+        switch (type) {
+            case TYPE_HTTP:
+                httpConnectionListener(server, socket);
+                break;
+            case TYPE_TLS:
+                httpsConnectionListener(server, socket);
+                break;
+            case TYPE_RAW:
+                rawConnectionListener(server, socket);
+                break;
+            default:
+                throw new Error('Unknown type determined for socket: ' + type);
+                break;
+        }
+    }
+
+    function onReadable() {
+        if (resolvedType !== 0) {
+            throw new Error('onReadable called after we already determined type. Please file a bug.');
+            return;
+        }
+        debug('socket onReadable');
+        var data = socket.read();
+        //todo: on second packet we need to concat this data
+        if (receivedData === undefined) {
+            receivedData = data;
+        } else {
+            bufferConcatArray[0] = receivedData;
+            bufferConcatArray[1] = data;
+            //todo: this sucks we have to make a new Buffer on the second packet all the time
+            receivedData = Buffer.concat(bufferConcatArray, (receivedData.length + data.length));
+            bufferConcatArray[0] = undefined;
+            bufferConcatArray[1] = undefined;
+        }
         //data is a buffer
         for (var i = 0; i < data.length; i++) {
             //ignore these
             if (data[i] === _CR_ || data[i] === _LF_ || data[i] === _SPACE_) {
                 continue;
             }
-            //check to see if its a { (start of json blob) or if its one of the HTTP methods
-            //otherwise its an error
-            if (data[i] === _OBRACKET_) {
-                isRaw = true;
-                break;
+            //todo: if we don't have enough data yet to determine the type... wait till next packet
+            if (validateHTTPMethod(data, i)) {
+                resolvedType = TYPE_HTTP;
+                debug('Determined HTTP');
+            } else if (validateTLSHello(data, i)) {
+                resolvedType = TYPE_TLS;
+                debug('Determined TLS');
+            } else if (server.rawFallback) {
+                resolvedType = TYPE_RAW;
+                debug('Determined RAW');
+            } else {
+                resolvedType = TYPE_ERROR;
+                debug('Determined ERROR');
             }
-            //if you trust benchmarks then switch is faster than indexOf: http://jsperf.com/switch-vs-array/8
-            switch (data[i]) {
-                case _METHODS_[0]:
-                case _METHODS_[1]:
-                case _METHODS_[2]:
-                case _METHODS_[3]:
-                case _METHODS_[4]:
-                case _METHODS_[5]:
-                case _METHODS_[6]:
-                case _METHODS_[7]:
-                case _METHODS_[8]:
-                case _METHODS_[9]:
-                case _METHODS_[10]:
-                case _METHODS_[11]:
-                    isHTTP = true;
-                    break;
-                default:
-                    console.log("Unexpected " + data[i]);
-                    isError = true;
-                    break;
-            }
-            //at this point its either expected or its isHTTP
+            //at this point we know the type
             break;
         }
-        if (isError) {
-            if (!socket.ended) {
-                socket.destroy();
-            }
-            return;
-        }
-        if (!isHTTP && !isRaw) {
-            return;
-        }
+        if (resolvedType !== 0) {
+            clearTimeout(timeout);
 
-        //clean up our listener before we pass onto http/raw sockets
-        socket.removeListener('data', onData);
+            debug('resolved type cleaning up');
+            //clean up our listener since we resolved the type
+            socket.removeListener('readable', onReadable);
+            socket.removeListener('end', onEnd);
+            socket.removeListener('error', triggerClientError);
+            socket.removeListener('close', onClose);
 
-        //if somehow the socket ended already just bail
-        if (!socket.readable || !socket.writable || socket.ended) {
-            if (!socket.ended) {
-                socket.end();
-            }
-            return;
+            //we're no longer listening to readable anymore
+            socket._readableState.readableListening = false;
+            socket._readableState.reading = false;
+
+/*
+            (don't need any of this right now since resume() is working)
+
+            //call read(0) to set needsReadable to true, but first we need to unset reading by calling push('')
+            //see _stream_readable.js readableAddChunk
+            socket.push(_EMPTYBUFFER_);
+            socket.read(0);
+
+            //we need to set sync to true so stream knows to fire the readable on the next tick
+            socket._readableState.sync = true;
+*/
+
+            //put all the data we received back on the top of the stream
+            //the tls socket will only work if we already have data in the stream
+            socket.unshift(receivedData);
+
+            //Because of Node Bug #9355, we won't get an error when there's a tls error
+            typeDetermined(resolvedType, receivedData);
         }
-        //set the timeout now to the value the user wants
-        socket.setTimeout(server.timeout);
-        if (isHTTP) {
-            httpConnectionListener(server, socket);
-        } else {
-            rawConnectionListener(server, socket);
-        }
-        //re-send our data we just got to emulate this listener
-        //ondata is for backwards-compatibility with 0.10.x
-        if (typeof socket.ondata === 'function') {
-            socket.ondata(data, 0, data.length);
-        } else {
-            socket.emit('data', data);
-        }
-    });
+    }
+    socket.on('readable', onReadable);
+    //since the http server is setup with allowHalfOpen, we need to end when we get a FIN
+    socket.once('end', onEnd);
+    socket.once('error', triggerClientError);
+    socket.once('close', onClose);
 }
 
 function emitConnect(server, socket, writer) {
@@ -190,7 +363,11 @@ function onNewWSClient(server, listener, socket, writer) {
 }
 
 function httpConnectionListener(server, socket) {
-    http._connectionListener.call(server, socket);
+    server._httpConnectionListener(socket);
+}
+
+function httpsConnectionListener(server, socket) {
+    server._httpsConnectionListener(socket);
 }
 
 function rawConnectionListener(server, socket) {
@@ -220,12 +397,47 @@ function onUpgrade(req, socket, upgradeHead) {
     });
 }
 
-function Portluck(messageListener) {
-    //don't call http.Server constructor since we need to overwrite the connection handler
-    http.Server.call(this);
+function destroySocket(socket) {
+    socket.destroy();
+}
 
-    //remove the listner for connection from http.Server
+function Portluck(messageListener, opts) {
+    var options = opts || {},
+        httpsEnabled = !(!options.pfx && !options.key && !options.cert);
+    //if they don't want https don't force them
+    if (httpsEnabled) {
+        https.Server.call(this, options);
+
+        if (this._events === undefined || typeof this._events.connection !== 'function') {
+            throw new Error('Assert: missing https connection listener. Please file a bug!');
+        }
+        //ghetto hack to get the https connection listener since its not exposed
+        this._httpsConnectionListener = this._events.connection;
+    } else {
+        debug('disabling https server since no key/cert sent');
+        //calling http.Server since we don't inherit from it actually just makes a new server and returns it...
+        //http.Server.call(this);
+        this.httpAllowHalfOpen = false;
+
+        this._httpsConnectionListener = destroySocket;
+    }
+
+    //this one is exposed, or we'd have to use this._events.secureConnection
+    this._httpConnectionListener = http._connectionListener;
+
+    //remove node's connection listner
     this.removeAllListeners('connection');
+    this.removeAllListeners('secureConnection');
+
+    //add our own listener to clientError
+    this.removeAllListeners('clientError');
+    this.addListener('clientError', function(err, conn) {
+        debug('clientError', err);
+        conn.destroy();
+    });
+
+    //"start" the websocket server
+    this._wss = new WebSocket.Server({noServer: true});
 
     if (messageListener) {
         this.addListener('message', messageListener);
@@ -235,20 +447,37 @@ function Portluck(messageListener) {
     //we won't be letting this event actually fire though in our emit
     this.addListener('upgrade', onUpgrade);
 
-    //"start" the websocket server
-    this._wss = new WebSocket.Server({noServer: true});
+    if (options.rawFallback !== undefined) {
+        this.rawFallback = options.rawFallback;
+    }
+    if (options.timeout !== undefined) {
+        if (typeof options.timeout !== 'number') {
+            throw new TypeError('options.timeout must be a number');
+        }
+        this.timeout = options.timeout;
+    } else {
+        //2 minutes is the default timeout
+        this.timeout = 120 * 1000;
+    }
 }
-util.inherits(Portluck, http.Server);
+util.inherits(Portluck, https.Server);
 parentEmit = http.Server.prototype.emit;
 
-//override a bunch of the events
+//should we fallback to a raw socket?
+Portluck.prototype.rawFallback = true;
+
+//override a bunch of the events in emit so they don't bubble up
 Portluck.prototype.emit = function(type) {
     var msg, resp, writer;
     switch (type) {
-        case 'connection': //socket
+        case 'connection': //socket connection from net.Server
             onConnection(this, arguments[1]);
             break;
+        case 'secureConnection': //tls connection from tls.Server
+            this._httpConnectionListener(arguments[1]);
+            break;
         case 'request': //msg, resp
+            debug('received request event', msg);
             //take over the default HTTP "request" event so we can publish message
             msg = arguments[1];
             resp = arguments[2];
@@ -274,6 +503,9 @@ Portluck.prototype.emit = function(type) {
             onUpgrade.call(this, arguments[1], arguments[2], arguments[3]);
             break;
         default:
+            if (type === 'clientError') {
+                debug('clientError', arguments[1]);
+            }
             parentEmit.apply(this, Array.prototype.slice.call(arguments, 0));
             return;
     }
