@@ -265,6 +265,10 @@ function onConnection(server, socket) {
         }
         debug('socket onReadable');
         var data = socket.read();
+        if (data === null) {
+            debug('Received null data from socket.read(). Ignoring...');
+            return;
+        }
         //todo: on second packet we need to concat this data
         if (receivedData === undefined) {
             receivedData = data;
@@ -302,7 +306,6 @@ function onConnection(server, socket) {
         if (resolvedType !== 0) {
             clearTimeout(timeout);
 
-            debug('resolved type cleaning up');
             //clean up our listener since we resolved the type
             socket.removeListener('readable', onReadable);
             socket.removeListener('end', onEnd);
@@ -540,10 +543,10 @@ Portluck.prototype.emit = function(type) {
             this._httpConnectionListener(arguments[1]);
             break;
         case 'request': //msg, resp
-            debug('received request event', msg);
             //take over the default HTTP "request" event so we can publish message
             msg = arguments[1];
             resp = arguments[2];
+            debug('received request event', msg);
 
             resp.setHeader('Connection', 'close');
             resp.setHeader('Content-Type', 'text/plain');
