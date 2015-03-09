@@ -556,6 +556,7 @@ Portluck.prototype.emit = function(type) {
             } else if (msg.headers.origin) {
                 resp.setHeader('Access-Control-Allow-Origin', msg.headers.origin);
                 resp.setHeader('Access-Control-Allow-Methods', 'POST, PUT');
+                resp.setHeader('Access-Control-Allow-Credentials', 'true');
             }
 
             //respond to OPTIONS requests for pre-flight access controls
