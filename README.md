@@ -23,6 +23,21 @@ Fired when a client disconnects. Event is sent `socket` which is the socket that
 ### server.listen(port [,callback]) ###
 Accepts the same parameters and options as [http.Server.listen](http://nodejs.org/api/http.html#http_server_listen_port_hostname_backlog_callback).
 
+## Options ##
+
+### rawFallback ###
+Boolean for whether we should fallback to a raw socket connetion if http/tls/websocket isn't detected or on timeout.
+
+### timeout ###
+See [net.Server.timeout](https://nodejs.org/api/http.html#http_server_timeout). Defaults to 2 minutes.
+Note: We wait 3 seconds to fallback to raw socket if no data is sent immediately after opening a connection. Your
+`timeout` applies AFTER that if no data is sent immediately.
+
+### allowOrigin ###
+Origin to respond with `Allow-Access-Control-Origin` for. Value can be a string or RegExp. String values can contain
+a single `*` for wildcard matching `[a-zA-Z0-9_-]`. **Do not add a protocol (like `https://`).**
+Note: `*.example.com` is special and matches `example.com`, `www.example.com`, and `www.staging.example.com`.
+
 ## Todo ##
 
 * Do not require the first socket character to be "{"

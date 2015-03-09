@@ -7,13 +7,35 @@ var portluck = require('../server.js'),
     server = new portluck.Server(),
     listening = false;
 
-exports.setUp = function(callback) {
-    if (listening) {
-        return;
+Object.extend = function(obj, obj2) {
+    var dest = {},
+        key;
+    for (key in obj) {
+        if (obj.hasOwnProperty(key)) {
+            dest[key] = obj[key];
+        }
     }
-    server.listen(listenOptions.port, listenOptions.host, callback);
+    for (key in obj2) {
+        if (obj2.hasOwnProperty(key)) {
+            dest[key] = obj2[key];
+        }
+    }
+    return dest;
+};
+
+function listen(cb) {
+    listening = true;
+    server.listen(listenOptions.port, listenOptions.host, cb);
     //we don't care if we die and the server is still around
     server.unref();
+}
+
+exports.setUp = function(callback) {
+    if (listening) {
+        callback();
+        return;
+    }
+    listen(callback);
 };
 
 exports.testSimpleSocket = function(test) {
@@ -25,6 +47,7 @@ exports.testSimpleSocket = function(test) {
             test.done();
         });
     }
+    server.removeAllListeners();
     server.once('clientConnect', function(socket) {
         test.ok(socket instanceof net.Socket);
         test.equal(socket.remoteAddress, listenOptions.host);
@@ -57,6 +80,7 @@ exports.testSimpleHTTP = function(test) {
             test.done();
         });
     }
+    server.removeAllListeners();
     server.once('clientConnect', function(socket) {
         test.ok(socket instanceof net.Socket);
         test.equal(socket.remoteAddress, listenOptions.host);
@@ -92,6 +116,7 @@ exports.testSimpleHTTP = function(test) {
 exports.testSocketResponse = function(test) {
     test.expect(1);
     var conn;
+    server.removeAllListeners();
     server.once('clientConnect', function(socket, writer) {
         writer.write(testString);
     });
@@ -107,5 +132,38 @@ exports.testSocketResponse = function(test) {
     conn.once('timeout', function() {
         conn.destroy();
         test.ok(false);
+    });
+};
+
+exports.testGETHTTP = function(test) {
+    test.expect(1);
+    var conn;
+
+    server.removeAllListeners();
+    server.once('clientConnect', function(socket) {
+        test.ok(false);
+    });
+    server.once('message', function(message) {
+        test.ok(false);
+    });
+    conn = http.request(Object.extend(httpOptions, {method: 'GET'}), function(resp) {
+        test.equal(resp.statusCode, 405);
+        test.done();
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+    conn.end();
+};
+
+exports.testClose = function(test) {
+    if (!listening) {
+        test.done();
+        return;
+    }
+    server.close(function() {
+        test.done();
     });
 };

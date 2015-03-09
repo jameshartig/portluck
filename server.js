@@ -53,6 +53,7 @@ var _CR_ = "\r".charCodeAt(0),
     _TLS_CLIENT_HELLO_ = 0x01,
     TYPE_ERROR = -1, TYPE_HTTP = 1, TYPE_RAW = 2, TYPE_TLS = 3,
     bufferConcatArray = new Array(2),
+    EMPTY_STRING = '',
     i;
 
 function ResponseWriter(client) {
@@ -403,6 +404,33 @@ function destroySocket(socket) {
     socket.destroy();
 }
 
+function stripProtocolFromOrigin(origin) {
+    var index = 0;
+    if (origin[4] === ':') { //http://
+        index = 7;
+    } else if (origin[5] === ':') { // https://
+        index = 8
+    } else {
+        index = origin.indexOf('://') + 3;
+        //-1 + 3 = 2 (means not found)
+        if (index === 2) {
+            index = 0;
+        }
+    }
+    return origin.substr(index);
+}
+
+function addRequiredListeners(server) {
+    server.addListener('clientError', function(err, conn) {
+        debug('clientError', err);
+        conn.destroy();
+    });
+
+    //we need to *have* a listener for 'upgrade' so it emits the event in http.Server
+    //we won't be letting this event actually fire though in our emit
+    server.addListener('upgrade', onUpgrade);
+}
+
 function Portluck(messageListener, opts) {
     var options = opts || {},
         httpsEnabled = !(!options.pfx && !options.key && !options.cert);
@@ -433,12 +461,10 @@ function Portluck(messageListener, opts) {
     this.removeAllListeners('connection');
     this.removeAllListeners('secureConnection');
 
-    //add our own listener to clientError
+    //we're using our own listener to clientError
     this.removeAllListeners('clientError');
-    this.addListener('clientError', function(err, conn) {
-        debug('clientError', err);
-        conn.destroy();
-    });
+
+    addRequiredListeners(this);
 
     //"start" the websocket server
     this._wss = new WebSocket.Server({noServer: true});
@@ -446,10 +472,6 @@ function Portluck(messageListener, opts) {
     if (messageListener) {
         this.addListener('message', messageListener);
     }
-
-    //we need to *have* a listener for 'upgrade' so it emits the event in http.Server
-    //we won't be letting this event actually fire though in our emit
-    this.addListener('upgrade', onUpgrade);
 
     if (options.rawFallback !== undefined) {
         this.rawFallback = options.rawFallback;
@@ -463,9 +485,39 @@ function Portluck(messageListener, opts) {
         //2 minutes is the default timeout
         this.timeout = 120 * 1000;
     }
+    if (options.allowOrigin !== undefined) {
+        var originMatch = options.allowOrigin;
+        if (typeof originMatch === 'string') {
+            //optimize for *.example.com
+            if (originMatch.indexOf('*.') === 0) {
+                originMatch = new RegExp('(?:[a-zA-Z0-9_\\-]+.)?' + originMatch.substr(2), 'i');
+            } else if (originMatch.indexOf('*') !== -1) {
+                originMatch = new RegExp(originMatch.replace('*', '(?:[a-zA-Z0-9_\\-]+)'), 'i');
+            } else {
+                originMatch = originMatch.toLowerCase();
+            }
+        }
+        if (originMatch instanceof RegExp) {
+            this.validateOrigin = function(o) {
+                var origin = o ? stripProtocolFromOrigin(o) : EMPTY_STRING;
+                return originMatch.test(origin);
+            };
+        } else {
+            this.validateOrigin = function(o) {
+                var origin = o ? stripProtocolFromOrigin(o) : EMPTY_STRING;
+                //only lowercase if we have to
+                return (origin === originMatch) || (origin.toLowerCase() === originMatch);
+            };
+        }
+    } else {
+        this.validateOrigin = function() {
+            return true;
+        };
+    }
 }
 util.inherits(Portluck, https.Server);
 parentEmit = https.Server.prototype.emit;
+parentRemoveAllListeners = https.Server.prototype.removeAllListeners;
 
 //should we fallback to a raw socket?
 Portluck.prototype.rawFallback = true;
@@ -485,9 +537,23 @@ Portluck.prototype.emit = function(type) {
             //take over the default HTTP "request" event so we can publish message
             msg = arguments[1];
             resp = arguments[2];
+
+            resp.setHeader('Connection', 'close');
+            resp.setHeader('Content-Type', 'text/plain');
+
+            if (!this.validateOrigin(msg.headers.origin)) {
+                debug('invalid origin header sent', msg.headers.origin);
+                resp.writeHead(400);
+                resp.end();
+                return;
+            } else if (msg.headers.origin) {
+                resp.setHeader('Allow-Access-Control-Origin', msg.headers.origin);
+            }
+
             if (msg.method !== 'POST' && msg.method !== 'PUT') {
                 //405 means "Method Not Allowed"
-                resp.writeHead(405, {Allow: 'POST,PUT', 'Content-Type': 'text/plain'});
+                resp.setHeader('Allow', 'POST,PUT');
+                resp.writeHead(405);
                 resp.end('Allowed methods are POST or PUT.');
                 break;
             }
@@ -513,6 +579,13 @@ Portluck.prototype.emit = function(type) {
             parentEmit.apply(this, Array.prototype.slice.call(arguments, 0));
             return;
     }
+};
+Portluck.prototype.removeAllListeners = function(type) {
+    var result = parentRemoveAllListeners.apply(this, Array.prototype.slice.call(arguments, 0));
+    if (arguments.length === 0) {
+        addRequiredListeners(this);
+    }
+    return result;
 };
 
 exports.Server = Portluck;
