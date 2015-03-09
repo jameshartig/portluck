@@ -433,8 +433,15 @@ function addRequiredListeners(server) {
 
 function Portluck(messageListener, opts) {
     var options = opts || {},
-        httpsEnabled = !(!options.pfx && !options.key && !options.cert);
+        httpsEnabled = true;
+    if (arguments.length === 1 && typeof messageListener === 'object') {
+        options = messageListener;
+        messageListener = null;
+    }
     //if they don't want https don't force them
+    if (!options.pfx && !options.key && !options.cert) {
+        httpsEnabled = false;
+    }
     if (httpsEnabled) {
         https.Server.call(this, options);
 
