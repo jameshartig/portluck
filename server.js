@@ -531,7 +531,7 @@ Portluck.prototype.rawFallback = true;
 
 //override a bunch of the events in emit so they don't bubble up
 Portluck.prototype.emit = function(type) {
-    var msg, resp, writer;
+    var msg, resp, writer, socket;
     switch (type) {
         case 'connection': //socket connection from net.Server
             onConnection(this, arguments[1]);
@@ -577,7 +577,14 @@ Portluck.prototype.emit = function(type) {
             listenForDelimiterData(this, msg, msg.socket, writer);
             break;
         case 'upgrade': //req, socket, upgradeHead
-            onUpgrade.call(this, arguments[1], arguments[2], arguments[3]);
+            msg = arguments[1];
+            socket = arguments[2];
+            if (!this.validateOrigin(msg.headers.origin)) {
+                debug('invalid origin header sent', msg.headers.origin);
+                socket.end();
+                return;
+            }
+            onUpgrade.call(this, msg, socket, arguments[3]);
             break;
         default:
             if (type === 'clientError') {
