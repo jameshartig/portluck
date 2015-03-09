@@ -1,6 +1,6 @@
 # Portluck #
 
-Accepts arbitrary data on a single port via HTTP, WebSockets, or a TCP socket.
+Accepts arbitrary data on a single port via HTTP, HTTPS, WebSockets, or a TCP socket.
 
 ### new portluck.Server([messageCallback][, options]) ###
 Creates a new server that inherits [https.Server](https://nodejs.org/api/https.html#https_class_https_server).
@@ -26,12 +26,12 @@ Accepts the same parameters and options as [http.Server.listen](http://nodejs.or
 ## Options ##
 
 ### rawFallback ###
-Boolean for whether we should fallback to a raw socket connetion if http/tls/websocket isn't detected or on timeout.
+Boolean for whether we should fallback to a raw socket connetion if http/tls/websocket isn't detected.
 
 ### timeout ###
 See [net.Server.timeout](https://nodejs.org/api/http.html#http_server_timeout). Defaults to 2 minutes.
-Note: We wait 3 seconds to fallback to raw socket if no data is sent immediately after opening a connection. Your
-`timeout` applies AFTER that if no data is sent immediately.
+Note: We wait 2 seconds to try and wait for bytes to determine what type of connection it is. Your `timeout
+applies AFTER that if no data is sent immediately.
 
 ### allowOrigin ###
 Origin to respond with `Allow-Access-Control-Origin` for. Value can be a string or RegExp. String values can contain
@@ -40,7 +40,6 @@ Note: `*.example.com` is special and matches `example.com`, `www.example.com`, a
 
 ## Todo ##
 
-* Do not require the first socket character to be "{"
 * Look at the full line to determine if HTTP connection instead of the first word
 * Support UDP sockets as well
 

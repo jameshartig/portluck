@@ -69,6 +69,74 @@ exports.testSimpleSocket = function(test) {
     });
 };
 
+exports.testSimpleSocketDelayed = function(test) {
+    test.expect(5);
+    var conn;
+
+    function testNoConnectionsLeft() {
+        server.getConnections(function(err, count) {
+            test.equal(count, 0);
+            test.done();
+        });
+    }
+
+    server.removeAllListeners();
+    server.once('clientConnect', function(socket) {
+        test.ok(socket instanceof net.Socket);
+        test.equal(socket.remoteAddress, listenOptions.host);
+    });
+    server.once('message', function(message) {
+        test.strictEqual(message.toString(), testString);
+    });
+    server.once('clientDisconnect', function(socket) {
+        test.ok(socket instanceof net.Socket);
+        testNoConnectionsLeft();
+    });
+    conn = net.createConnection(listenOptions, function() {
+        setTimeout(function() {
+            conn.end(testString + "\n");
+        }, 3000);
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
+exports.testSimpleSocketNoNewLine = function(test) {
+    test.expect(5);
+    var conn;
+
+    function testNoConnectionsLeft() {
+        server.getConnections(function(err, count) {
+            test.equal(count, 0);
+            test.done();
+        });
+    }
+
+    server.removeAllListeners();
+    server.once('clientConnect', function(socket) {
+        test.ok(socket instanceof net.Socket);
+        test.equal(socket.remoteAddress, listenOptions.host);
+    });
+    server.once('message', function(message) {
+        test.strictEqual(message.toString(), testString);
+    });
+    server.once('clientDisconnect', function(socket) {
+        test.ok(socket instanceof net.Socket);
+        testNoConnectionsLeft();
+    });
+    conn = net.createConnection(listenOptions, function() {
+        conn.end(testString);
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
 exports.testSimpleHTTP = function(test) {
     test.expect(6);
     var receivedResp = false,
@@ -123,6 +191,26 @@ exports.testSocketResponse = function(test) {
     conn = net.createConnection(listenOptions, function() {
         conn.end("{}\n");
     });
+    conn.on('data', function(data) {
+        test.strictEqual(data.toString(), testString);
+        conn.destroy();
+        test.done();
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
+exports.testSocketResponseNoSend = function(test) {
+    test.expect(1);
+    var conn;
+    server.removeAllListeners();
+    server.once('clientConnect', function(socket, writer) {
+        writer.write(testString);
+    });
+    conn = net.createConnection(listenOptions);
     conn.on('data', function(data) {
         test.strictEqual(data.toString(), testString);
         conn.destroy();

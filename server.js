@@ -51,7 +51,7 @@ var _CR_ = "\r".charCodeAt(0),
     _TLSRECORD_ = 0x16,
     _TLS_SSL3_ = 0x03,
     _TLS_CLIENT_HELLO_ = 0x01,
-    TYPE_ERROR = -1, TYPE_HTTP = 1, TYPE_RAW = 2, TYPE_TLS = 3,
+    TYPE_ERROR = -1, TYPE_HTTP = 1, TYPE_RAW = 2, TYPE_TLS = 3, TYPE_PENDING = 4,
     bufferConcatArray = new Array(2),
     EMPTY_STRING = '',
     i;
@@ -191,6 +191,39 @@ function validateTLSHello(data, index) {
     return false;
 }
 
+function typeDetermined(server, socket, type) {
+    debug('typeDetermined', type);
+    if (type === TYPE_ERROR) {
+        //todo: emulate parse error from http/https
+        server.emit('clientError', 'PARSE_ERROR', socket);
+        return;
+    }
+    //set the timeout now to the value the user wants
+    socket.setTimeout(server.timeout);
+    switch (type) {
+        case TYPE_HTTP:
+            httpConnectionListener(server, socket);
+            break;
+        case TYPE_TLS:
+            httpsConnectionListener(server, socket);
+            break;
+        case TYPE_RAW:
+            rawConnectionListener(server, socket);
+            break;
+        case TYPE_PENDING:
+            pendingConnectionListener(server, socket);
+            break;
+        default:
+            throw new Error('Unknown type determined for socket: ' + type);
+            break;
+    }
+    //need to call ondata for v0.10.x
+    if (typeof socket.ondata === 'function') {
+        var pendingData = socket.read();
+        socket.ondata(pendingData, 0, pendingData.length);
+    }
+}
+
 function onConnection(server, socket) {
     var resolvedType = 0,
         receivedData, timeout;
@@ -202,6 +235,7 @@ function onConnection(server, socket) {
     }
     function onEnd() {
         debug('socket end');
+        clearTimeout(timeout);
         if (!socket.ended) {
             socket.end();
         }
@@ -214,54 +248,19 @@ function onConnection(server, socket) {
     //we're handling our own timeouts for now
     socket.setTimeout(0);
 
-    //wait at most 3 seconds to determine type, otherwise either fallback or destroy
+    //wait at most 2 seconds to determine type, otherwise emit connect and wait till we are told how to handle data
     timeout = setTimeout(function() {
-        if (server.rawFallback) {
-            typeDetermined(TYPE_RAW);
-        } else {
-            //todo: emulate timeout error from http/https
-            triggerClientError('TIMEOUT');
-        }
-    }, 3000);
-
-    function typeDetermined(type) {
-        debug('typeDetermined', type);
-        if (type === TYPE_ERROR) {
-            //todo: emulate parse error from http/https
-            triggerClientError('PARSE_ERROR');
-            return;
-        }
-        //if somehow the socket ended already just bail
         if (!socket.readable || !socket.writable || socket.ended) {
+            onEnd();
             return;
         }
-        //set the timeout now to the value the user wants
-        socket.setTimeout(server.timeout);
-        switch (type) {
-            case TYPE_HTTP:
-                httpConnectionListener(server, socket);
-                break;
-            case TYPE_TLS:
-                httpsConnectionListener(server, socket);
-                break;
-            case TYPE_RAW:
-                rawConnectionListener(server, socket);
-                break;
-            default:
-                throw new Error('Unknown type determined for socket: ' + type);
-                break;
-        }
-        //need to call ondata for v0.10.x
-        if (typeof socket.ondata === 'function') {
-            var pendingData = socket.read();
-            socket.ondata(pendingData, 0, pendingData.length);
-        }
-    }
+        debug('timeout waiting for first byte');
+        typeDetermined(server, socket, TYPE_PENDING);
+    }, 2000);
 
     function onReadable() {
         if (resolvedType !== 0) {
             throw new Error('onReadable called after we already determined type. Please file a bug.');
-            return;
         }
         debug('socket onReadable');
         var data = socket.read();
@@ -304,13 +303,7 @@ function onConnection(server, socket) {
             break;
         }
         if (resolvedType !== 0) {
-            clearTimeout(timeout);
-
-            //clean up our listener since we resolved the type
-            socket.removeListener('readable', onReadable);
-            socket.removeListener('end', onEnd);
-            socket.removeListener('error', triggerClientError);
-            socket.removeListener('close', onClose);
+            socket.emit('_resolvedType', resolvedType);
 
             //we're no longer listening to readable anymore
             socket._readableState.readableListening = false;
@@ -321,7 +314,7 @@ function onConnection(server, socket) {
             socket.unshift(receivedData);
 
             //Because of Node Bug #9355, we won't get an error when there's a tls error
-            typeDetermined(resolvedType);
+            typeDetermined(server, socket, resolvedType);
         }
     }
     socket.on('readable', onReadable);
@@ -329,13 +322,31 @@ function onConnection(server, socket) {
     socket.once('end', onEnd);
     socket.once('error', triggerClientError);
     socket.once('close', onClose);
+
+    socket.once('_resolvedType', function(type) {
+        clearTimeout(timeout);
+        //clean up our listener since we resolved the type
+        socket.removeListener('readable', onReadable);
+        socket.removeListener('end', onEnd);
+        socket.removeListener('error', triggerClientError);
+        socket.removeListener('close', onClose);
+    });
 }
 
+//todo: figure out a way to not store state on the socket
 function emitConnect(server, socket, writer) {
+    if (socket._connectEmitted || socket._disconnectEmitted || socket.ended) {
+        return;
+    }
     parentEmit.call(server, 'clientConnect', socket, writer);
+    socket._connectEmitted = true;
 }
 function emitDisconnect(server, socket) {
+    if (!socket._connectEmitted || socket._disconnectEmitted) {
+        return;
+    }
     parentEmit.call(server, 'clientDisconnect', socket);
+    socket._disconnectEmitted = true;
 }
 
 function onNewRawClient(server, socket, writer) {
@@ -343,11 +354,10 @@ function onNewRawClient(server, socket, writer) {
     socket.once('close', function() {
         //clean up any listeners on data since we already sent that we're disconnected
         socket.removeAllListeners('data');
+        socket.removeAllListeners('end');
         emitDisconnect(server, socket);
     });
-    socket.once('end', function() {
-        socket.end();
-    })
+    //'end' listener needs to be added in listenForDelimiterData
 }
 //for http we need to listen for close on the socket and NOT the listener >_<
 function onNewHTTPClient(server, listener, socket, writer) {
@@ -356,6 +366,7 @@ function onNewHTTPClient(server, listener, socket, writer) {
     socket.once('close', function() {
         //clean up any listeners on data since we already sent that we're disconnected
         listener.removeAllListeners('data');
+        listener.removeAllListeners('end');
         emitDisconnect(server, socket);
     });
 }
@@ -382,12 +393,36 @@ function rawConnectionListener(server, socket) {
     listenForDelimiterData(server, socket, socket, writer);
 }
 
+function pendingConnectionListener(server, socket) {
+    var writer = new ResponseWriter(socket);
+    emitConnect(server, socket, writer);
+    function onClose() {
+        emitDisconnect(server, socket);
+    }
+    function onEnd() {
+        if (!socket.ended) {
+            socket.end();
+        }
+    }
+    socket.once('close', onClose);
+    socket.once('end', onEnd);
+    socket.once('_resolvedType', function() {
+        socket.removeListener('end', onEnd);
+        socket.removeListener('close', onClose);
+    });
+}
+
 function listenForDelimiterData(server, listener, socket, writer) {
     //todo: allow passing in custom delimiter
     var delimiterWrap = DelimiterStream.wrap(function(data) {
         parentEmit.call(server, 'message', data, socket, writer);
     });
     listener.on('data', delimiterWrap);
+    listener.once('end', function() {
+        //send null to flush the rest of the data left buffered
+        delimiterWrap(null);
+        writer.end();
+    });
 }
 
 function onUpgrade(req, socket, upgradeHead) {
@@ -546,10 +581,11 @@ Portluck.prototype.emit = function(type) {
             //take over the default HTTP "request" event so we can publish message
             msg = arguments[1];
             resp = arguments[2];
-            debug('received request event', msg);
+            debug('received request event', msg.method, msg.httpVersion);
 
             resp.setHeader('Connection', 'close');
             resp.setHeader('Content-Type', 'text/plain');
+            resp.removeHeader('Transfer-Encoding');
 
             if (!this.validateOrigin(msg.headers.origin)) {
                 debug('invalid origin header sent', msg.headers.origin);
@@ -576,12 +612,6 @@ Portluck.prototype.emit = function(type) {
             }
             resp.writeHead(200); //make sure we write the head BEFORE we possibly allow writes
             writer = new ResponseWriter(resp);
-            //when the POST body ends we should trigger a message for whatever is left over
-            msg.once('end', function() {
-                //todo: when we allow a custom delimiter, send it here
-                msg.emit('data', _LF_);
-                resp.end();
-            });
             onNewHTTPClient(this, msg, msg.socket, writer);
             //for a post/put the request can just be treated like a socket
             listenForDelimiterData(this, msg, msg.socket, writer);
