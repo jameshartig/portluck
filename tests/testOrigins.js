@@ -163,6 +163,31 @@ exports.exampleCom = function(test) {
     });
 };
 
+exports.exampleComPreflight = function(test) {
+    test.expect(2);
+    serverOptions.allowOrigin = 'example.com';
+    reListen(function() {
+        var conn;
+        server.once('clientConnect', function(socket) {
+            test.ok(false);
+        });
+        conn = http.request(Object.extend(httpOptions, {method: 'OPTIONS'}), function(resp) {
+            test.equal(resp.headers['allow-access-control-origin'], 'example.com');
+            test.equal(resp.statusCode, 200);
+            test.done();
+        });
+        conn.setHeader('Origin', 'example.com');
+        conn.setTimeout(5000);
+        conn.once('timeout', function() {
+            conn.destroy();
+            test.ok(false);
+        });
+        //send our post body and finish
+        conn.write(testString);
+        conn.end();
+    });
+};
+
 exports.testClose = function(test) {
     if (!listening) {
         test.done();

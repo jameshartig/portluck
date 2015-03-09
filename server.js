@@ -552,12 +552,18 @@ Portluck.prototype.emit = function(type) {
                 debug('invalid origin header sent', msg.headers.origin);
                 resp.writeHead(400);
                 resp.end();
-                return;
+                break;
             } else if (msg.headers.origin) {
                 resp.setHeader('Allow-Access-Control-Origin', msg.headers.origin);
+                resp.setHeader('Access-Control-Allow-Methods', 'POST, PUT');
             }
 
-            if (msg.method !== 'POST' && msg.method !== 'PUT') {
+            //respond to OPTIONS requests for pre-flight access controls
+            if (msg.method === 'OPTIONS') {
+                resp.writeHead(200);
+                resp.end();
+                break;
+            } else if (msg.method !== 'POST' && msg.method !== 'PUT') {
                 //405 means "Method Not Allowed"
                 resp.setHeader('Allow', 'POST,PUT');
                 resp.writeHead(405);
