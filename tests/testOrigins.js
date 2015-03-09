@@ -50,7 +50,7 @@ exports.wildcardTestExampleCom = function(test) {
             test.ok(socket.remoteAddress, listenOptions.host);
         });
         conn = http.request(httpOptions, function(resp) {
-            test.equal(resp.headers['allow-access-control-origin'], 'test.example.com');
+            test.equal(resp.headers['access-control-allow-origin'], 'test.example.com');
             test.equal(resp.statusCode, 200);
             test.done();
         });
@@ -147,7 +147,7 @@ exports.exampleCom = function(test) {
             test.equal(socket.remoteAddress, listenOptions.host);
         });
         conn = http.request(httpOptions, function(resp) {
-            test.equal(resp.headers['allow-access-control-origin'], 'example.com');
+            test.equal(resp.headers['access-control-allow-origin'], 'example.com');
             test.equal(resp.statusCode, 200);
             test.done();
         });
@@ -172,7 +172,7 @@ exports.exampleComPreflight = function(test) {
             test.ok(false);
         });
         conn = http.request(Object.extend(httpOptions, {method: 'OPTIONS'}), function(resp) {
-            test.equal(resp.headers['allow-access-control-origin'], 'example.com');
+            test.equal(resp.headers['access-control-allow-origin'], 'example.com');
             test.equal(resp.statusCode, 200);
             test.done();
         });

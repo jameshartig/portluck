@@ -554,7 +554,7 @@ Portluck.prototype.emit = function(type) {
                 resp.end();
                 break;
             } else if (msg.headers.origin) {
-                resp.setHeader('Allow-Access-Control-Origin', msg.headers.origin);
+                resp.setHeader('Access-Control-Allow-Origin', msg.headers.origin);
                 resp.setHeader('Access-Control-Allow-Methods', 'POST, PUT');
             }
 
