@@ -334,17 +334,21 @@ function emitDisconnect(server, socket) {
     parentEmit.call(server, 'clientDisconnect', socket);
 }
 
-function onNewClient(server, socket, writer) {
+function onNewRawClient(server, socket, writer) {
     emitConnect(server, socket, writer);
     socket.once('close', function() {
         //clean up any listeners on data since we already sent that we're disconnected
         socket.removeAllListeners('data');
         emitDisconnect(server, socket);
     });
+    socket.once('end', function() {
+        socket.end();
+    })
 }
 //for http we need to listen for close on the socket and NOT the listener >_<
 function onNewHTTPClient(server, listener, socket, writer) {
     emitConnect(server, socket, writer);
+    //built-in http automatically handles closing on 'end'
     socket.once('close', function() {
         //clean up any listeners on data since we already sent that we're disconnected
         listener.removeAllListeners('data');
@@ -370,7 +374,7 @@ function httpsConnectionListener(server, socket) {
 
 function rawConnectionListener(server, socket) {
     var writer = new ResponseWriter(socket);
-    onNewClient(server, socket, writer);
+    onNewRawClient(server, socket, writer);
     listenForDelimiterData(server, socket, socket, writer);
 }
 
@@ -415,10 +419,12 @@ function Portluck(messageListener, opts) {
         debug('disabling https server since no key/cert sent');
         //calling http.Server since we don't inherit from it actually just makes a new server and returns it...
         //http.Server.call(this);
-        this.httpAllowHalfOpen = false;
-
+        net.Server.call(this);
         this._httpsConnectionListener = destroySocket;
     }
+    this.httpAllowHalfOpen = false;
+    //set this manually since https.Server doesn't set it
+    this.allowHalfOpen = true;
 
     //this one is exposed, or we'd have to use this._events.secureConnection
     this._httpConnectionListener = http._connectionListener;
@@ -459,7 +465,7 @@ function Portluck(messageListener, opts) {
     }
 }
 util.inherits(Portluck, https.Server);
-parentEmit = http.Server.prototype.emit;
+parentEmit = https.Server.prototype.emit;
 
 //should we fallback to a raw socket?
 Portluck.prototype.rawFallback = true;
