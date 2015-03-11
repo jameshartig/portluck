@@ -1,6 +1,6 @@
 {
   "name": "portluck",
-  "version": "0.1.0-beta.6",
+  "version": "0.1.0-beta.7",
   "description": "A unified HTTP/TCPSocket/WebSocket server for receiving arbitrary data",
   "main": "server.js",
   "directories": {

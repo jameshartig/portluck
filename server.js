@@ -357,6 +357,10 @@ function onNewRawClient(server, socket, writer) {
         socket.removeAllListeners('end');
         emitDisconnect(server, socket);
     });
+    socket.once('error', function(err) {
+        parentEmit.call(server, 'clientError', err);
+        writer.destroy();
+    });
     //'end' listener needs to be added in listenForDelimiterData
 }
 //for http we need to listen for close on the socket and NOT the listener >_<
@@ -369,13 +373,27 @@ function onNewHTTPClient(server, listener, socket, writer) {
         listener.removeAllListeners('end');
         emitDisconnect(server, socket);
     });
+    listener.once('error', function(err) {
+        parentEmit.call(server, 'clientError', err);
+        writer.destroy();
+    });
 }
 function onNewWSClient(server, listener, socket, writer) {
+    //ws resets the timeout to 0 for some reason but we want to keep it what the user wants
+    socket.setTimeout(server.timeout);
+
     emitConnect(server, socket, writer);
     listener.once('close', function() {
         //clean up any listeners on data since we already sent that we're disconnected
         listener.removeAllListeners('message');
         emitDisconnect(server, socket);
+    });
+    listener.once('error', function(err) {
+        parentEmit.call(server, 'clientError', err);
+        writer.destroy();
+    });
+    listener.on('message', function(data, opts) {
+        parentEmit.call(server, 'message', opts.buffer || data, socket, writer);
     });
 }
 
@@ -430,11 +448,6 @@ function onUpgrade(req, socket, upgradeHead) {
     this._wss.handleUpgrade(req, socket, upgradeHead, function(client) {
         var writer = new ResponseWriter(client);
         onNewWSClient(server, client, socket, writer);
-        //ws resets the timeout to 0 for some reason but we want to keep it what the user wants
-        socket.setTimeout(server.timeout);
-        client.on('message', function(data, opts) {
-            parentEmit.call(server, 'message', opts.buffer || data, socket, writer);
-        });
     });
 }
 
