@@ -472,8 +472,11 @@ function onNewWSClient(server, listener, socket, writer) {
         parentEmit.call(server, 'clientError', err);
         writer.destroy();
     });
-    listener.on('message', function(data, opts) {
-        parentEmit.call(server, 'message', opts.buffer || data, socket, writer);
+    listener.on('message', function(data) {
+        if (data.length === 0) {
+            return;
+        }
+        parentEmit.call(server, 'message', data, socket, writer);
     });
 }
 
