@@ -40,7 +40,6 @@ Note: `*.example.com` is special and matches `example.com`, `www.example.com`, a
 
 ## Todo ##
 
-* Look at the full line to determine if HTTP connection instead of the first word
 * Support UDP sockets as well
 
 By [James Hartig](https://github.com/fastest963/)
