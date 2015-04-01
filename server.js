@@ -723,10 +723,10 @@ Portluck.prototype.emit = function(type) {
             }
             onUpgrade.call(this, msg, socket, arguments[3]);
             break;
+        case 'clientError':
+            parentEmit.call(this, arguments[0], arguments[1], arguments[2]);
+            break;
         default:
-            if (type === 'clientError') {
-                debug('clientError', arguments[1]);
-            }
             parentEmit.apply(this, Array.prototype.slice.call(arguments, 0));
             return;
     }
