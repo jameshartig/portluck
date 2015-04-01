@@ -683,12 +683,13 @@ Portluck.prototype.emit = function(type) {
             resp.setHeader('Content-Type', 'text/plain');
             resp.removeHeader('Transfer-Encoding');
 
+            //call validateOrigin even if they didn't send one since we might require an origin
             if (!this.validateOrigin(msg.headers.origin)) {
                 debug('invalid origin header sent', msg.headers.origin);
                 resp.writeHead(400);
                 resp.end();
                 break;
-            } else if (msg.headers.origin) {
+            } else if (msg.headers.origin != null) { //only send back approved origin headers if they sent an origin
                 resp.setHeader('Access-Control-Allow-Origin', msg.headers.origin);
                 resp.setHeader('Access-Control-Allow-Methods', 'POST, PUT');
                 resp.setHeader('Access-Control-Allow-Credentials', 'true');
