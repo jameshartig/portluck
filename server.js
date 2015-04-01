@@ -47,10 +47,18 @@ var _CR_ = "\r".charCodeAt(0),
         new Buffer("PUT"),
         new Buffer("TRACE")
     ],
+    _HTTP_ = [
+        "H".charCodeAt(0),
+        "T".charCodeAt(0),
+        "T".charCodeAt(0),
+        "P".charCodeAt(0)
+    ],
+    _MIN_HTTP_LINE_LENGTH_ = 3 + 6, //smallest method is 3 chars and HTTP/x is 6
     _MAX_METHOD_LENGTH_ = 7,
     _TLSRECORD_ = 0x16,
     _TLS_SSL3_ = 0x03,
     _TLS_CLIENT_HELLO_ = 0x01,
+    _SSL2HEADERBYTE_ = 0x80,
     TYPE_ERROR = -1, TYPE_HTTP = 1, TYPE_RAW = 2, TYPE_TLS = 3, TYPE_PENDING = 4,
     bufferConcatArray = new Array(2),
     EMPTY_STRING = '',
@@ -101,101 +109,162 @@ ResponseWriter.prototype.destroy = function() {
     this._client.destroy();
 };
 
-function validateHTTPMethod(data, index) {
+function validateHTTPMethod(data, index, len) {
     var i = index || 0,
-        l = Math.min(i + _MAX_METHOD_LENGTH_, data.length),
-        methodMatch, methodMatchIndex;
-    for (; i < l; i++) {
-        if (data[i] === _SPACE_ || data[i] === _CR_ || data[i] === _LF_) {
-            //ignore leading spaces/newlines/etc
-            continue;
-        }
-        //if you trust benchmarks then switch is faster than indexOf: http://jsperf.com/switch-vs-array/8
-        switch (data[i]) {
-            case _METHODSCHARS_[0]: //C
-                methodMatch = _METHODS_[0];
-                methodMatchIndex = 1;
-                break;
-            case _METHODSCHARS_[1]: //D
-                methodMatch = _METHODS_[1];
-                methodMatchIndex = 1;
-                break;
-            case _METHODSCHARS_[2]: //G
-                methodMatch = _METHODS_[2];
-                methodMatchIndex = 1;
-                break;
-            case _METHODSCHARS_[3]: //H
-                methodMatch = _METHODS_[3];
-                methodMatchIndex = 1;
-                break;
-            case _METHODSCHARS_[4]: //O
-                methodMatch = _METHODS_[4];
-                methodMatchIndex = 1;
-                break;
-            case _METHODSCHARS_[5]: //P
-                switch (data[i + 1]) {
-                    case _P_METHODSCHARS_[0]:
-                        methodMatch = _METHODS_[5];
+        l = len || data.length,
+        httpIndex = 0,
+        methodMatch = 0,
+        methodMatchIndex = 0;
+    if (l > _MIN_HTTP_LINE_LENGTH_) {
+        for (; i < l; i++) {
+            if (data[i] === _SPACE_ || data[i] === _CR_ || data[i] === _LF_) {
+                //ignore leading spaces/newlines/etc
+                continue;
+            }
+            //if you trust benchmarks then switch is faster than indexOf: http://jsperf.com/switch-vs-array/8
+            switch (data[i]) {
+                case _METHODSCHARS_[0]: //C
+                    methodMatch = _METHODS_[0];
+                    methodMatchIndex = 1;
+                    break;
+                case _METHODSCHARS_[1]: //D
+                    methodMatch = _METHODS_[1];
+                    methodMatchIndex = 1;
+                    break;
+                case _METHODSCHARS_[2]: //G
+                    methodMatch = _METHODS_[2];
+                    methodMatchIndex = 1;
+                    break;
+                case _METHODSCHARS_[3]: //H
+                    methodMatch = _METHODS_[3];
+                    methodMatchIndex = 1;
+                    break;
+                case _METHODSCHARS_[4]: //O
+                    methodMatch = _METHODS_[4];
+                    methodMatchIndex = 1;
+                    break;
+                case _METHODSCHARS_[5]: //P
+                    switch (data[i + 1]) {
+                        case _P_METHODSCHARS_[0]:
+                            methodMatch = _METHODS_[5];
+                            break;
+                        case _P_METHODSCHARS_[1]:
+                            methodMatch = _METHODS_[6];
+                            break;
+                        case _P_METHODSCHARS_[2]:
+                            methodMatch = _METHODS_[7];
+                            break;
+                        default:
+                            return false;
+                            break;
+                    }
+                    //we just verified the next char so skip it
+                    i++;
+                    methodMatchIndex = 2;
+                    break;
+                case _METHODSCHARS_[6]: //T
+                    methodMatch = _METHODS_[8];
+                    methodMatchIndex = 1;
+                    break;
+                default:
+                    return 0;
+                    break;
+            }
+            //skipping next char since we just matched it above
+            i++;
+            //finishing the loop down here so we don't have to check methodMatch !=== undefined at the top every char
+            for (; i < l && methodMatchIndex < methodMatch.length; i++, methodMatchIndex++) {
+                if (methodMatch[methodMatchIndex] !== data[i]) {
+                    return 0;
+                }
+            }
+            //we've found a valid command, now look for HTTP
+            //see if we can find HTTP on this line
+            for (; i < l && httpIndex < 4; i++) {
+                switch (data[i]) {
+                    case _HTTP_[httpIndex]:
+                        httpIndex++;
                         break;
-                    case _P_METHODSCHARS_[1]:
-                        methodMatch = _METHODS_[6];
+                    case _CR_:
+                    case _LF_:
+                        //we didn't find HTTP since we already got to the new line
+                        return 0;
                         break;
-                    case _P_METHODSCHARS_[2]:
-                        methodMatch = _METHODS_[7];
-                        break;
-                    default:
-                        return false;
+                    case _SPACE_:
+                        if (httpIndex > 0) {
+                            //we don't allow spaces in HTTP
+                            return 0;
+                        }
                         break;
                 }
-                //we just verified the next char so skip it
-                i++;
-                methodMatchIndex = 2;
-                break;
-            case _METHODSCHARS_[6]: //T
-                methodMatch = _METHODS_[8];
-                methodMatchIndex = 1;
-                break;
-            default:
-                return false;
-                break;
-
-        }
-        //finishing the loop down here so we don't have to check methodMatch !=== undefined at the top every char
-        for (i++; i < l && methodMatchIndex < methodMatch.length; i++, methodMatchIndex++) {
-            if (methodMatch[methodMatchIndex] !== data[i]) {
-                return false;
             }
+            //break now since we just checked the first non space character
+            break;
         }
-        return true;
     }
-    return false;
+    //httpIndex >= 4 then we found HTTP in the header and its a valid HTTP line, otherwise its not
+    return httpIndex >= 4 ? 1 : 0;
 }
 
 //via http://security.stackexchange.com/questions/34780/checking-client-hello-for-https-classification
 //also see node_crypto_clienthello.cc ParseRecordHeader
-function validateTLSHello(data, index) {
-    var i = index || 0;
-    for (; i < data.length; i++) {
-        if (data[i] === _SPACE_ || data[i] === _CR_ || data[i] === _LF_) {
-            //ignore leading spaces/newlines/etc
-            continue;
+function validateTLSHello(data, index, len) {
+    var i = index || 0,
+        l = len || data.length;
+    if (len > 5) {
+        for (; i < l; i++) {
+            if (data[i] === _SPACE_ || data[i] === _CR_ || data[i] === _LF_) {
+                //ignore leading spaces/newlines/etc
+                continue;
+            }
+            if (data[i] === _TLSRECORD_ && data[i + 1] === _TLS_SSL3_) {
+                if (data[i + 5] !== _TLS_CLIENT_HELLO_) {
+                    //invalid message type but still tls
+                    return -1;
+                }
+                return 1;
+            }
+            break;
         }
-        if (data[i] !== _TLSRECORD_ || data[i + 1] !== _TLS_SSL3_) {
-            return false;
-        }
-        if (data[i + 5] !== _TLS_CLIENT_HELLO_) {
-            return false;
-        }
-        return true;
     }
-    return false;
+    return 0;
 }
+
+//via http://stackoverflow.com/questions/3897883/how-to-detect-an-incoming-ssl-https-handshake-ssl-wire-format
+//also see node_crypto_clienthello.cc ParseRecordHeader
+function validateSSLv2(data, index, len) {
+    var i = index || 0,
+        l = len || data.length;
+    if (len > 2) {
+        for (; i < l; i++) {
+            if (data[i] === _SPACE_ || data[i] === _CR_ || data[i] === _LF_) {
+                //ignore leading spaces/newlines/etc
+                continue;
+            }
+            if ((data[i] & _SSL2HEADERBYTE_) && data[i + 2] === _TLS_CLIENT_HELLO_) {
+                return 1;
+            }
+            //some clients are sending 80 03 00 04 00 00 00 14 00 00 00 02 00 00 00 04 00 00 03 e8 00 00 00 07 00 a0 00 00 80 03 00 09 00 00 00 08 00 00 00 00 00 9f 00 00
+            //which I'm not sure what protocol except that it looks like SSLv2 and we should reject it
+            if ((data[i] & _SSL2HEADERBYTE_) && data[i + 1] === 0x03 && data[i + 3] === 0x04) {
+                return -1;
+            }
+            break;
+        }
+    }
+    return 0;
+}
+
+function ParseError(code) {
+    this.message = 'Parse Error';
+    this.code = code;
+}
+util.inherits(ParseError, Error);
 
 function typeDetermined(server, socket, type) {
     debug('typeDetermined', type);
     if (type === TYPE_ERROR) {
-        //todo: emulate parse error from http/https
-        server.emit('clientError', 'PARSE_ERROR', socket);
+        server.emit('clientError', new ParseError('HPE_UNKNOWN'), socket);
         return;
     }
     //set the timeout now to the value the user wants
@@ -263,7 +332,10 @@ function onConnection(server, socket) {
             throw new Error('onReadable called after we already determined type. Please file a bug.');
         }
         debug('socket onReadable');
-        var data = socket.read();
+        var data = socket.read(),
+            i = 0,
+            len = 0,
+            res = 0;
         if (data === null) {
             debug('Received null data from socket.read(). Ignoring...');
             return;
@@ -280,24 +352,32 @@ function onConnection(server, socket) {
             bufferConcatArray[1] = undefined;
         }
         //data is a buffer
-        for (var i = 0; i < data.length; i++) {
+        len = data.length;
+        for (i = 0; i < len; i++) {
             //ignore these
             if (data[i] === _CR_ || data[i] === _LF_ || data[i] === _SPACE_) {
                 continue;
             }
-            //todo: if we don't have enough data yet to determine the type... wait till next packet
-            if (validateHTTPMethod(data, i)) {
+            res = 0;
+            if ((res = validateHTTPMethod(data, i, len)) !== 0) {
                 resolvedType = TYPE_HTTP;
                 debug('Determined HTTP');
-            } else if (validateTLSHello(data, i)) {
+            } else if ((res = validateTLSHello(data, i, len)) !== 0) {
                 resolvedType = TYPE_TLS;
                 debug('Determined TLS');
+            } else if ((res = validateSSLv2(data, i, len)) !== 0) {
+                resolvedType = TYPE_ERROR;
+                debug('Determined SSLv2');
             } else if (server.rawFallback) {
                 resolvedType = TYPE_RAW;
                 debug('Determined RAW');
             } else {
                 resolvedType = TYPE_ERROR;
                 debug('Determined ERROR');
+            }
+            if (res === -1) {
+                resolvedType = TYPE_ERROR;
+                debug('Error with determined type. Changing resolved type to error');
             }
             //at this point we know the type
             break;

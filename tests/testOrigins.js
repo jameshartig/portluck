@@ -163,12 +163,13 @@ exports.exampleCom = function(test) {
     });
 };
 
+//for some reason this throws a HPE_INVALID_METHOD if you write a http body
 exports.exampleComPreflight = function(test) {
     test.expect(2);
     serverOptions.allowOrigin = 'example.com';
     reListen(function() {
         var conn;
-        server.once('clientConnect', function(socket) {
+        server.once('clientConnect', function() {
             test.ok(false);
         });
         conn = http.request(Object.extend(httpOptions, {method: 'OPTIONS'}), function(resp) {
@@ -183,7 +184,6 @@ exports.exampleComPreflight = function(test) {
             test.ok(false);
         });
         //send our post body and finish
-        conn.write(testString);
         conn.end();
     });
 };

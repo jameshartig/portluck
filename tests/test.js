@@ -246,6 +246,55 @@ exports.testGETHTTP = function(test) {
     conn.end();
 };
 
+exports.testRejectSSLv2 = function(test) {
+    test.expect(1);
+    var conn;
+    server.removeAllListeners();
+    server.once('clientConnect', function(socket, writer) {
+        test.ok(false);
+    });
+    conn = net.createConnection(listenOptions, function() {
+        conn.end(new Buffer('80 2b 01 00 02 00 12 00 00 00 10 07 00 c0 03 00 80 01 00 80 06 00 40 04 00 80 02 00 80 bb 14 91 20 9e 85 ac 3b c1 11 23 8f 25 3d 32 da'.replace(/\s/g, ''), 'hex'));
+    });
+    conn.on('close', function() {
+        test.ok(true);
+        test.done();
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
+exports.testRejectInvalidSSLv3 = function(test) {
+    test.expect(1);
+    var conn;
+    server.removeAllListeners();
+    server.once('clientConnect', function(socket, writer) {
+        test.ok(false);
+    });
+    server.once('clientError', function() {
+        test.ok(true);
+    });
+    conn = net.createConnection(listenOptions, function() {
+        //6th byte should be clientHello (01) but instead we've changed it to FF
+        conn.end(new Buffer('16 03 00 00 85 FF 00 00'.replace(/\s/g, ''), 'hex'));
+    });
+    conn.on('close', function() {
+        test.done();
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
+
+/**
+ * This MUST be the last test run!
+ */
 exports.testClose = function(test) {
     if (!listening) {
         test.done();
