@@ -100,7 +100,7 @@ ResponseWriter.prototype.write = function(message) {
     }
 };
 ResponseWriter.prototype.writeHead = function(code, message, headers) {
-    if (this._client instanceof http.ServerResponse) {
+    if (this._client instanceof http.ServerResponse && !this._client.headersSent) {
         this._client.writeHead(code, message, headers);
     }
 };
@@ -505,6 +505,12 @@ function rawConnectionListener(server, socket) {
     var writer = new ResponseWriter(socket, false);
     onNewRawClient(server, socket, writer);
     listenForDelimiterData(server, socket, socket, writer);
+    //if we get a FIN, end the writer on the next tick
+    socket.once('end', function() {
+        process.nextTick(function() {
+            writer.end();
+        });
+    });
 }
 
 function pendingConnectionListener(server, socket) {
@@ -535,7 +541,6 @@ function listenForDelimiterData(server, listener, socket, writer) {
     listener.once('end', function() {
         //send null to flush the rest of the data left buffered
         delimiterWrap(null);
-        writer.end();
     });
 }
 
@@ -720,7 +725,7 @@ Portluck.prototype.emit = function(type) {
                 resp.end('Allowed methods are POST or PUT.');
                 break;
             }
-            resp.writeHead(200); //make sure we write the head BEFORE we possibly allow writes
+            resp.statusCode = 200; //default the statusCode to 200
             writer = new ResponseWriter(resp, true);
             onNewHTTPClient(this, msg, msg.socket, writer);
             //for a post/put the request can just be treated like a socket
