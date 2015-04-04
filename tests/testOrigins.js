@@ -46,7 +46,7 @@ exports.wildcardTestExampleCom = function(test) {
     serverOptions.allowOrigin = '*.example.com';
     reListen(function() {
         var conn;
-        server.once('clientConnect', function(socket) {
+        server.once('clientConnect', function(writer, socket) {
             test.ok(socket.remoteAddress, listenOptions.host);
         });
         conn = http.request(httpOptions, function(resp) {
@@ -71,7 +71,7 @@ exports.wildcardExampleCom = function(test) {
     serverOptions.allowOrigin = '*.example.com';
     reListen(function() {
         var conn;
-        server.once('clientConnect', function(socket) {
+        server.once('clientConnect', function(writer, socket) {
             test.equal(socket.remoteAddress, listenOptions.host);
         });
         conn = http.request(httpOptions, function(resp) {
@@ -95,7 +95,7 @@ exports.wildcardFailCom = function(test) {
     serverOptions.allowOrigin = '*.example.com';
     reListen(function() {
         var conn;
-        server.once('clientConnect', function(socket) {
+        server.once('clientConnect', function() {
             test.equal(false);
         });
         conn = http.request(httpOptions, function(resp) {
@@ -119,7 +119,7 @@ exports.wwwExampleCom = function(test) {
     serverOptions.allowOrigin = 'example.com';
     reListen(function() {
         var conn;
-        server.once('clientConnect', function(socket) {
+        server.once('clientConnect', function() {
             test.equal(false);
         });
         conn = http.request(httpOptions, function(resp) {
@@ -143,7 +143,7 @@ exports.exampleCom = function(test) {
     serverOptions.allowOrigin = 'example.com';
     reListen(function() {
         var conn;
-        server.once('clientConnect', function(socket) {
+        server.once('clientConnect', function(writer, socket) {
             test.equal(socket.remoteAddress, listenOptions.host);
         });
         conn = http.request(httpOptions, function(resp) {

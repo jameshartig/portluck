@@ -48,7 +48,7 @@ exports.testSimpleSocket = function(test) {
         });
     }
     server.removeAllListeners();
-    server.once('clientConnect', function(socket) {
+    server.once('clientConnect', function(writer, socket) {
         test.ok(socket instanceof net.Socket);
         test.equal(socket.remoteAddress, listenOptions.host);
     });
@@ -81,7 +81,7 @@ exports.testSimpleSocketDelayed = function(test) {
     }
 
     server.removeAllListeners();
-    server.once('clientConnect', function(socket) {
+    server.once('clientConnect', function(writer, socket) {
         test.ok(socket instanceof net.Socket);
         test.equal(socket.remoteAddress, listenOptions.host);
     });
@@ -116,7 +116,7 @@ exports.testSimpleSocketNoNewLine = function(test) {
     }
 
     server.removeAllListeners();
-    server.once('clientConnect', function(socket) {
+    server.once('clientConnect', function(writer, socket) {
         test.ok(socket instanceof net.Socket);
         test.equal(socket.remoteAddress, listenOptions.host);
     });
@@ -149,7 +149,7 @@ exports.testSimpleHTTP = function(test) {
         });
     }
     server.removeAllListeners();
-    server.once('clientConnect', function(socket) {
+    server.once('clientConnect', function(writer, socket) {
         test.ok(socket instanceof net.Socket);
         test.equal(socket.remoteAddress, listenOptions.host);
     });
@@ -185,7 +185,7 @@ exports.testSocketResponse = function(test) {
     test.expect(1);
     var conn;
     server.removeAllListeners();
-    server.once('clientConnect', function(socket, writer) {
+    server.once('clientConnect', function(writer, socket) {
         writer.write(testString);
     });
     conn = net.createConnection(listenOptions, function() {
@@ -207,7 +207,7 @@ exports.testSocketResponseNoSend = function(test) {
     test.expect(1);
     var conn;
     server.removeAllListeners();
-    server.once('clientConnect', function(socket, writer) {
+    server.once('clientConnect', function(writer, socket) {
         writer.write(testString);
     });
     conn = net.createConnection(listenOptions);
@@ -223,15 +223,94 @@ exports.testSocketResponseNoSend = function(test) {
     });
 };
 
+exports.testHTTPResponseNoSend = function(test) {
+    test.expect(2);
+    var conn;
+    server.removeAllListeners();
+    server.once('clientConnect', function(writer, socket) {
+        writer.write(testString);
+        writer.done();
+    });
+    conn = http.request(httpOptions, function(resp) {
+        test.equal(resp.statusCode, 200);
+        resp.on('data', function(data) {
+            test.strictEqual(data.toString(), testString);
+        });
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+    conn.once('close', function() {
+        test.done();
+    });
+    conn.end();
+};
+
+exports.testHTTPResponse = function(test) {
+    test.expect(2);
+    var conn;
+    server.removeAllListeners();
+    server.once('message', function(message, writer, socket) {
+        test.strictEqual(message.toString(), testString);
+        writer.write(testString);
+    });
+    conn = http.request(httpOptions, function(resp) {
+        resp.on('data', function(data) {
+            test.strictEqual(data.toString(), testString);
+        });
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+    conn.once('close', function() {
+        test.done();
+    });
+    conn.write(testString);
+    conn.end();
+};
+
+exports.testHTTPResponseDelayed = function(test) {
+    test.expect(2);
+    var conn;
+    server.explicitDone = true;
+    server.removeAllListeners();
+    server.once('message', function(message, writer, socket) {
+        test.strictEqual(message.toString(), testString);
+        setTimeout(function() {
+            writer.done(testString);
+        }, 100);
+    });
+    conn = http.request(httpOptions, function(resp) {
+        resp.on('data', function(data) {
+            test.strictEqual(data.toString(), testString);
+        });
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+    conn.once('close', function() {
+        server.explicitDone = false;
+        test.done();
+    });
+    conn.write(testString);
+    conn.end();
+};
+
 exports.testGETHTTP = function(test) {
     test.expect(1);
     var conn;
 
     server.removeAllListeners();
-    server.once('clientConnect', function(socket) {
+    server.once('clientConnect', function() {
         test.ok(false);
     });
-    server.once('message', function(message) {
+    server.once('message', function() {
         test.ok(false);
     });
     conn = http.request(Object.extend(httpOptions, {method: 'GET'}), function(resp) {
@@ -250,7 +329,7 @@ exports.testRejectSSLv2 = function(test) {
     test.expect(1);
     var conn;
     server.removeAllListeners();
-    server.once('clientConnect', function(socket, writer) {
+    server.once('clientConnect', function(writer, socket) {
         test.ok(false);
     });
     conn = net.createConnection(listenOptions, function() {
@@ -271,7 +350,7 @@ exports.testRejectInvalidSSLv3 = function(test) {
     test.expect(1);
     var conn;
     server.removeAllListeners();
-    server.once('clientConnect', function(socket, writer) {
+    server.once('clientConnect', function(writer, socket) {
         test.ok(false);
     });
     server.once('clientError', function() {

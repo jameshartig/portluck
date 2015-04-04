@@ -70,7 +70,7 @@ function ResponseWriter(client, endOnWrite) {
         throw new TypeError('Invalid client sent to ResponseWriter');
     }
     this._encoding = undefined;
-    this._endOnWrite = endOnWrite;
+    this.ended = false;
 }
 ResponseWriter.prototype.setDefaultEncoding = function(encoding) {
     if (encoding === 'binary' || encoding === 'buffer') {
@@ -83,6 +83,9 @@ ResponseWriter.prototype.setDefaultEncoding = function(encoding) {
     this._encoding = encoding;
 };
 ResponseWriter.prototype.write = function(message) {
+    if (this.ended) {
+        throw new Error('write called after writer ended');
+    }
     if (this._client instanceof WebSocket) {
         var options = {binary: false};
         if (this._encoding === undefined) {
@@ -94,10 +97,6 @@ ResponseWriter.prototype.write = function(message) {
         return;
     }
     this._client.write(message, this._encoding);
-    if (this._endOnWrite) {
-        process.nextTick(this.end.bind(this));
-        this._endOnWrite = false;
-    }
 };
 ResponseWriter.prototype.writeHead = function(code, message, headers) {
     if (this._client instanceof http.ServerResponse && !this._client.headersSent) {
@@ -109,16 +108,31 @@ ResponseWriter.prototype.end = function() {
         this._client.close();
         return;
     }
+    this.ended = true;
     if (this._client.ended) {
         return;
     }
     this._client.end();
+};
+ResponseWriter.prototype.done = function(message) {
+    if (message !== undefined) {
+        this.write(message);
+    }
+    this.ended = true;
+    if (this._client.ended) {
+        return;
+    }
+    //automatically close http responses
+    if (this._client instanceof http.ServerResponse) {
+        this._client.end();
+    }
 };
 ResponseWriter.prototype.destroy = function() {
     if (this._client instanceof WebSocket) {
         this._client.terminate();
         return;
     }
+    this.ended = true;
     this._client.destroy();
 };
 
@@ -431,7 +445,7 @@ function emitConnect(server, socket, writer) {
     if (socket._connectEmitted || socket._disconnectEmitted || socket.ended) {
         return;
     }
-    parentEmit.call(server, 'clientConnect', socket, writer);
+    parentEmit.call(server, 'clientConnect', writer, socket);
     socket._connectEmitted = true;
 }
 function emitDisconnect(server, socket) {
@@ -470,12 +484,19 @@ function onNewHTTPClient(server, listener, socket, writer) {
         parentEmit.call(server, 'clientError', err);
         writer.destroy();
     });
+    if (!server.explicitDone) {
+        listener.once('end', function(err) {
+            process.nextTick(function() {
+                writer.done();
+            });
+        });
+    }
 }
 function onNewWSClient(server, listener, socket, writer) {
     //ws resets the timeout to 0 for some reason but we want to keep it what the user wants
     socket.setTimeout(server.timeout);
 
-    emitConnect(server, socket, writer);
+    emitConnect(server, writer, socket);
     listener.once('close', function() {
         //clean up any listeners on data since we already sent that we're disconnected
         listener.removeAllListeners('message');
@@ -489,7 +510,7 @@ function onNewWSClient(server, listener, socket, writer) {
         if (data.length === 0) {
             return;
         }
-        parentEmit.call(server, 'message', data, socket, writer);
+        parentEmit.call(server, 'message', data, writer, socket);
     });
 }
 
@@ -502,7 +523,7 @@ function httpsConnectionListener(server, socket) {
 }
 
 function rawConnectionListener(server, socket) {
-    var writer = new ResponseWriter(socket, false);
+    var writer = new ResponseWriter(socket);
     onNewRawClient(server, socket, writer);
     listenForDelimiterData(server, socket, socket, writer);
     //if we get a FIN, end the writer on the next tick
@@ -514,7 +535,7 @@ function rawConnectionListener(server, socket) {
 }
 
 function pendingConnectionListener(server, socket) {
-    var writer = new ResponseWriter(socket, false);
+    var writer = new ResponseWriter(socket);
     emitConnect(server, socket, writer);
     function onClose() {
         emitDisconnect(server, socket);
@@ -535,7 +556,7 @@ function pendingConnectionListener(server, socket) {
 function listenForDelimiterData(server, listener, socket, writer) {
     //todo: allow passing in custom delimiter
     var delimiterWrap = DelimiterStream.wrap(function(data) {
-        parentEmit.call(server, 'message', data, socket, writer);
+        parentEmit.call(server, 'message', data, writer, socket);
     });
     listener.on('data', delimiterWrap);
     listener.once('end', function() {
@@ -547,7 +568,7 @@ function listenForDelimiterData(server, listener, socket, writer) {
 function onUpgrade(req, socket, upgradeHead) {
     var server = this;
     this._wss.handleUpgrade(req, socket, upgradeHead, function(client) {
-        var writer = new ResponseWriter(client, false);
+        var writer = new ResponseWriter(client);
         onNewWSClient(server, client, socket, writer);
     });
 }
@@ -673,6 +694,7 @@ function Portluck(messageListener, opts) {
             return true;
         };
     }
+    this.explicitDone = options.explicitDone || false;
 }
 util.inherits(Portluck, https.Server);
 parentEmit = https.Server.prototype.emit;
@@ -726,7 +748,7 @@ Portluck.prototype.emit = function(type) {
                 break;
             }
             resp.statusCode = 200; //default the statusCode to 200
-            writer = new ResponseWriter(resp, true);
+            writer = new ResponseWriter(resp);
             onNewHTTPClient(this, msg, msg.socket, writer);
             //for a post/put the request can just be treated like a socket
             listenForDelimiterData(this, msg, msg.socket, writer);
