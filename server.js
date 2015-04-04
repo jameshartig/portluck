@@ -64,12 +64,13 @@ var _CR_ = "\r".charCodeAt(0),
     EMPTY_STRING = '',
     i;
 
-function ResponseWriter(client) {
+function ResponseWriter(client, endOnWrite) {
     this._client = client;
     if (!this._client) {
         throw new TypeError('Invalid client sent to ResponseWriter');
     }
     this._encoding = undefined;
+    this._endOnWrite = endOnWrite;
 }
 ResponseWriter.prototype.setDefaultEncoding = function(encoding) {
     if (encoding === 'binary' || encoding === 'buffer') {
@@ -93,10 +94,22 @@ ResponseWriter.prototype.write = function(message) {
         return;
     }
     this._client.write(message, this._encoding);
+    if (this._endOnWrite) {
+        process.nextTick(this.end.bind(this));
+        this._endOnWrite = false;
+    }
+};
+ResponseWriter.prototype.writeHead = function(code, message, headers) {
+    if (this._client instanceof http.ServerResponse) {
+        this._client.writeHead(code, message, headers);
+    }
 };
 ResponseWriter.prototype.end = function() {
     if (this._client instanceof WebSocket) {
         this._client.close();
+        return;
+    }
+    if (this._client.ended) {
         return;
     }
     this._client.end();
@@ -489,13 +502,13 @@ function httpsConnectionListener(server, socket) {
 }
 
 function rawConnectionListener(server, socket) {
-    var writer = new ResponseWriter(socket);
+    var writer = new ResponseWriter(socket, false);
     onNewRawClient(server, socket, writer);
     listenForDelimiterData(server, socket, socket, writer);
 }
 
 function pendingConnectionListener(server, socket) {
-    var writer = new ResponseWriter(socket);
+    var writer = new ResponseWriter(socket, false);
     emitConnect(server, socket, writer);
     function onClose() {
         emitDisconnect(server, socket);
@@ -529,7 +542,7 @@ function listenForDelimiterData(server, listener, socket, writer) {
 function onUpgrade(req, socket, upgradeHead) {
     var server = this;
     this._wss.handleUpgrade(req, socket, upgradeHead, function(client) {
-        var writer = new ResponseWriter(client);
+        var writer = new ResponseWriter(client, false);
         onNewWSClient(server, client, socket, writer);
     });
 }
@@ -708,7 +721,7 @@ Portluck.prototype.emit = function(type) {
                 break;
             }
             resp.writeHead(200); //make sure we write the head BEFORE we possibly allow writes
-            writer = new ResponseWriter(resp);
+            writer = new ResponseWriter(resp, true);
             onNewHTTPClient(this, msg, msg.socket, writer);
             //for a post/put the request can just be treated like a socket
             listenForDelimiterData(this, msg, msg.socket, writer);

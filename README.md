@@ -9,8 +9,10 @@ If `messageCallback` is sent, it will be added as a listener for `"message"` eve
 ### Event: 'message' ###
 Fired when a client sends a message. Event is sent `(message, socket, writer)`. `message` is a buffer containing
 the message received. `socket` is the socket that sent the message. You should only read properties off the socket,
-like `remoteAddress` and not use the `write`/`end` methods. `writer` is sent last and can be used to respond to the
-message. The `writer` has `write`, `end`, and `destroy` methods.
+like `remoteAddress` and not use the `write`/`end` methods.
+
+`writer` is sent last and can be used to respond to the message. The `writer` has `write`, `end`, and `destroy`
+methods. By default, HTTP/HTTPS requests are closed in the next tick after `write` is called.
 
 ### Event: 'clientConnect' ###
 Fired when a client connects. Event is sent `(socket, writer)` which is the socket that connected. You should only
