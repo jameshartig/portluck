@@ -330,6 +330,32 @@ exports.testHTTPResponseDoneAfterWrite = function(test) {
     conn.end();
 };
 
+exports.testHTTPImmediatelyDoneAfterWrite = function(test) {
+    test.expect(2);
+    var conn;
+    server.removeAllListeners();
+    server.once('message', function(message, writer) {
+        test.strictEqual(message.toString(), testString);
+        writer.doneAfterWrite();
+        writer.done(testString);
+    });
+    conn = http.request(httpOptions, function(resp) {
+        resp.on('data', function(data) {
+            test.strictEqual(data.toString(), testString);
+        });
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+    conn.once('close', function() {
+        test.done();
+    });
+    conn.write(testString);
+    conn.end();
+};
+
 exports.testGETHTTP = function(test) {
     test.expect(1);
     var conn;

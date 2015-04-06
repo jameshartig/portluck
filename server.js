@@ -87,7 +87,7 @@ ResponseWriter.prototype.setDefaultEncoding = function(encoding) {
 ResponseWriter.prototype.write = function(message) {
     this._pendingWrite = false;
     if (this.ended) {
-        throw new Error('write called after writer ended');
+        throw new Error('write called after ResponseWriter ended');
     }
     if (this._client instanceof WebSocket) {
         var options = {binary: false};
@@ -129,6 +129,9 @@ ResponseWriter.prototype._defaultDone = function() {
 ResponseWriter.prototype.done = function(message) {
     if (message !== undefined) {
         this.write(message);
+        if (this.ended) {
+            return;
+        }
     }
     this.ended = true;
     if (this._client.ended) {
