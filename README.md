@@ -29,7 +29,14 @@ Accepts the same parameters and options as [http.Server.listen](http://nodejs.or
 ## ResponseWriter ##
 
 ### writer.write(message) ###
-Writes `message` to the underlying source socket. `message` can be a string or Buffer.
+Writes `message` to the underlying source socket. `message` can be a string or Buffer. If you plan on
+responding to messages asynchronously, you should call `doneAfterWrite` since HTTP/HTTPS requests are
+automatically closed on the next tick (unless you sent `explicitDone` option).
+
+### writer.doneAfterWrite() ###
+If an automatic `done()` is scheduled to happen next tick, calling `doneAfterWrite` prevents that from
+happening and waits to automatically call done until the next `write()`. This is not needed if you created
+the server with the `explicitDone` option.
 
 ### writer.done([message]) ###
 Writes `message`, if passed, to the underlying source socket. If the source was a HTTP/HTTPS request, it is

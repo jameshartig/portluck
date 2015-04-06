@@ -71,6 +71,8 @@ function ResponseWriter(client, endOnWrite) {
     }
     this._encoding = undefined;
     this.ended = false;
+    this._pendingWrite = false;
+    this._doneAfterWrite = false;
 }
 ResponseWriter.prototype.setDefaultEncoding = function(encoding) {
     if (encoding === 'binary' || encoding === 'buffer') {
@@ -83,6 +85,7 @@ ResponseWriter.prototype.setDefaultEncoding = function(encoding) {
     this._encoding = encoding;
 };
 ResponseWriter.prototype.write = function(message) {
+    this._pendingWrite = false;
     if (this.ended) {
         throw new Error('write called after writer ended');
     }
@@ -94,9 +97,12 @@ ResponseWriter.prototype.write = function(message) {
             options.binary = true;
         }
         this._client.send(message, options);
-        return;
+    } else {
+        this._client.write(message, this._encoding);
     }
-    this._client.write(message, this._encoding);
+    if (this._doneAfterWrite) {
+        this.done();
+    }
 };
 ResponseWriter.prototype.writeHead = function(code, message, headers) {
     if (this._client instanceof http.ServerResponse && !this._client.headersSent) {
@@ -114,6 +120,12 @@ ResponseWriter.prototype.end = function() {
     }
     this._client.end();
 };
+ResponseWriter.prototype._defaultDone = function() {
+    if (this._pendingWrite) {
+        return;
+    }
+    return this.done();
+};
 ResponseWriter.prototype.done = function(message) {
     if (message !== undefined) {
         this.write(message);
@@ -126,6 +138,10 @@ ResponseWriter.prototype.done = function(message) {
     if (this._client instanceof http.ServerResponse) {
         this._client.end();
     }
+};
+ResponseWriter.prototype.doneAfterWrite = function() {
+    this._pendingWrite = true;
+    this._doneAfterWrite = true;
 };
 ResponseWriter.prototype.destroy = function() {
     if (this._client instanceof WebSocket) {
@@ -487,7 +503,7 @@ function onNewHTTPClient(server, listener, socket, writer) {
     if (!server.explicitDone) {
         listener.once('end', function(err) {
             process.nextTick(function() {
-                writer.done();
+                writer._defaultDone();
             });
         });
     }
