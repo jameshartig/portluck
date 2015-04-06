@@ -203,6 +203,36 @@ exports.testSocketResponse = function(test) {
     });
 };
 
+exports.testSocketResponseTwice = function(test) {
+    test.expect(4);
+    var sendTwice = false,
+        conn;
+    server.removeAllListeners();
+    server.on('message', function(message, writer) {
+        test.strictEqual(message.toString(), '{}');
+        //done SHOULDN'T end the writer
+        writer.done(testString);
+    });
+    conn = net.createConnection(listenOptions, function() {
+        conn.write("{}\n");
+    });
+    conn.on('data', function(data) {
+        test.strictEqual(data.toString(), testString);
+        if (!sendTwice) {
+            sendTwice = true;
+            conn.end("{}\n");
+            return;
+        }
+        conn.destroy();
+        test.done();
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
 exports.testSocketResponseNoSend = function(test) {
     test.expect(1);
     var conn;

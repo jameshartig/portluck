@@ -133,12 +133,12 @@ ResponseWriter.prototype.done = function(message) {
             return;
         }
     }
-    this.ended = true;
     if (this._client.ended) {
         return;
     }
     //automatically close http responses
     if (this._client instanceof http.ServerResponse) {
+        this.ended = true;
         this._client.end();
     }
 };
