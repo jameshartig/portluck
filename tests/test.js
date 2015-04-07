@@ -95,7 +95,50 @@ exports.testSimpleSocketDelayed = function(test) {
     conn = net.createConnection(listenOptions, function() {
         setTimeout(function() {
             conn.end(testString + "\n");
-        }, 3000);
+        }, 1500);
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
+exports.testSimpleSocketHTTPPartials = function(test) {
+    test.expect(5);
+    var conn;
+
+    function testNoConnectionsLeft() {
+        server.getConnections(function(err, count) {
+            test.equal(count, 0);
+            test.done();
+        });
+    }
+
+    server.removeAllListeners();
+    server.once('clientConnect', function(writer, socket) {
+        test.ok(socket instanceof net.Socket);
+        test.equal(socket.remoteAddress, listenOptions.host);
+    });
+    server.once('message', function(message) {
+        test.strictEqual(message.toString(), testString);
+    });
+    server.once('clientDisconnect', function(socket) {
+        test.ok(socket instanceof net.Socket);
+        testNoConnectionsLeft();
+    });
+    conn = net.createConnection(listenOptions, function() {
+        conn.write('\nPOS');
+        setTimeout(function() {
+            var postReq = ['T http://127.0.0.1:9999/ HTTP/1.1',
+                'User-Agent: Test',
+                'Host: 127.0.0.1:14999',
+                'Content-Length: ' + (testString.length + 1),
+                '',
+                ''
+                ];
+            conn.end(postReq.join('\r\n') + testString + '\n');
+        }, 1500);
     });
     conn.setTimeout(5000);
     conn.once('timeout', function() {
