@@ -515,7 +515,7 @@ function onNewWSClient(server, listener, socket, writer) {
     //ws resets the timeout to 0 for some reason but we want to keep it what the user wants
     socket.setTimeout(server.timeout);
 
-    emitConnect(server, writer, socket);
+    emitConnect(server, socket, writer);
     listener.once('close', function() {
         //clean up any listeners on data since we already sent that we're disconnected
         listener.removeAllListeners('message');
