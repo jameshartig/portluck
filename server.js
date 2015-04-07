@@ -484,7 +484,7 @@ function onNewRawClient(server, socket, writer) {
         emitDisconnect(server, socket);
     });
     socket.once('error', function(err) {
-        parentEmit.call(server, 'clientError', err);
+        parentEmit.call(server, 'clientError', err, socket);
         writer.destroy();
     });
     //'end' listener needs to be added in listenForDelimiterData
@@ -500,7 +500,7 @@ function onNewHTTPClient(server, listener, socket, writer) {
         emitDisconnect(server, socket);
     });
     listener.once('error', function(err) {
-        parentEmit.call(server, 'clientError', err);
+        parentEmit.call(server, 'clientError', err, socket);
         writer.destroy();
     });
     if (!server.explicitDone) {
@@ -522,7 +522,7 @@ function onNewWSClient(server, listener, socket, writer) {
         emitDisconnect(server, socket);
     });
     listener.once('error', function(err) {
-        parentEmit.call(server, 'clientError', err);
+        parentEmit.call(server, 'clientError', err, socket);
         writer.destroy();
     });
     listener.on('message', function(data) {
@@ -613,9 +613,9 @@ function stripProtocolFromOrigin(origin) {
 }
 
 function addRequiredListeners(server) {
-    server.addListener('clientError', function(err, conn) {
-        debug('clientError', err);
-        conn.destroy();
+    server.addListener('clientError', function(err, socket) {
+        debug('clientError', err, socket);
+        socket.destroy();
     });
 
     //we need to *have* a listener for 'upgrade' so it emits the event in http.Server

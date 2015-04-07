@@ -22,6 +22,9 @@ used to respond. The `writer` has `write`, `end`, and `destroy` methods.
 ### Event: 'clientDisconnect' ###
 Fired when a client disconnects. Event is sent `socket` which is the socket that disconnected.
 
+### Event: 'clientError' ###
+Fired when there's an error emitted from a client. Event is sent `(error, socket)`.
+
 ### server.listen(port [,callback]) ###
 Accepts the same parameters and options as [http.Server.listen](http://nodejs.org/api/http.html#http_server_listen_port_hostname_backlog_callback).
 
