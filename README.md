@@ -1,6 +1,11 @@
 # Portluck #
 
-Accepts arbitrary data on a single port via HTTP, HTTPS, WebSockets, or a TCP socket.
+Accepts arbitrary data on a single port via HTTP, HTTPS, WebSockets, or a TCP socket. Optimally data
+should be delimited by a `\n` character, or not to speed up connection detection (read below).
+
+Since we're sniffing for the connection type you will need to send at **least** 3 bytes over a raw TCP
+socket in order to trigger a `message` event. If those 3 bytes happen to match the beginning of a valid HTTP
+method we additionally wait for `\r` or `\n` to determine that it is/isn't an HTTP request.
 
 ## portluck.Server ##
 

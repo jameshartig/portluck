@@ -27,31 +27,40 @@ var _CR_ = "\r".charCodeAt(0),
         "D".charCodeAt(0),
         "G".charCodeAt(0),
         "H".charCodeAt(0),
+        "L".charCodeAt(0),
         "O".charCodeAt(0),
         "P".charCodeAt(0),
-        "T".charCodeAt(0)
+        "S".charCodeAt(0),
+        "T".charCodeAt(0),
+        "U".charCodeAt(0)
     ],
     _P_METHODSCHARS_ = [
         "A".charCodeAt(0),
         "O".charCodeAt(0),
         "U".charCodeAt(0)
     ],
+    _PURGE_ = new Buffer("PURGE"),
     _METHODS_ = [
         new Buffer("CONNECT"),
         new Buffer("DELETE"),
         new Buffer("GET"),
         new Buffer("HEAD"),
+        new Buffer("LOCK"),
         new Buffer("OPTIONS"),
         new Buffer("PATCH"),
         new Buffer("POST"),
+        _PURGE_,
         new Buffer("PUT"),
-        new Buffer("TRACE")
+        new Buffer("SEARCH"),
+        new Buffer("TRACE"),
+        new Buffer("UNLOCK")
     ],
     _HTTP_ = [
         "H".charCodeAt(0),
         "T".charCodeAt(0),
         "T".charCodeAt(0),
-        "P".charCodeAt(0)
+        "P".charCodeAt(0),
+        "/".charCodeAt(0)
     ],
     _TLSRECORD_ = 0x16,
     _TLS_SSL3_ = 0x03,
@@ -62,7 +71,7 @@ var _CR_ = "\r".charCodeAt(0),
     EMPTY_STRING = '',
     i;
 
-function ResponseWriter(client, endOnWrite) {
+function ResponseWriter(client) {
     this._client = client;
     if (!this._client) {
         throw new TypeError('Invalid client sent to ResponseWriter');
@@ -156,112 +165,122 @@ ResponseWriter.prototype.destroy = function() {
 function validateHTTPMethod(data, index, len) {
     var i = index || 0,
         l = len || data.length,
-        httpIndex = 0,
         methodMatch = 0,
-        methodMatchIndex = 0;
+        methodMatchIndex = 0,
+        methodMatchLen = 0;
     for (; i < l; i++) {
-        //ignore these
-        if (data[i] === _CR_ || data[i] === _LF_ || data[i] === _SPACE_) {
-            if (i + 1 === l) {
-                return -2;
-            }
-            continue;
+        //ignore these characters and continue looping
+        if (data[i] !== _CR_ && data[i] !== _LF_ && data[i] !== _SPACE_) {
+            break;
         }
-        //if you trust benchmarks then switch is faster than indexOf: http://jsperf.com/switch-vs-array/8
-        switch (data[i]) {
-            case _METHODSCHARS_[0]: //C
-                methodMatch = _METHODS_[0];
-                methodMatchIndex = 1;
-                break;
-            case _METHODSCHARS_[1]: //D
-                methodMatch = _METHODS_[1];
-                methodMatchIndex = 1;
-                break;
-            case _METHODSCHARS_[2]: //G
-                methodMatch = _METHODS_[2];
-                methodMatchIndex = 1;
-                break;
-            case _METHODSCHARS_[3]: //H
-                methodMatch = _METHODS_[3];
-                methodMatchIndex = 1;
-                break;
-            case _METHODSCHARS_[4]: //O
-                methodMatch = _METHODS_[4];
-                methodMatchIndex = 1;
-                break;
-            case _METHODSCHARS_[5]: //P
-                switch (data[i + 1]) {
-                    case _P_METHODSCHARS_[0]:
-                        methodMatch = _METHODS_[5];
-                        break;
-                    case _P_METHODSCHARS_[1]:
-                        methodMatch = _METHODS_[6];
-                        break;
-                    case _P_METHODSCHARS_[2]:
-                        methodMatch = _METHODS_[7];
-                        break;
-                    default:
-                        return false;
-                        break;
-                }
-                //we just verified the next char so skip it
-                i++;
-                methodMatchIndex = 2;
-                break;
-            case _METHODSCHARS_[6]: //T
-                methodMatch = _METHODS_[8];
-                methodMatchIndex = 1;
-                break;
-            default:
-                return 0;
-                break;
-        }
-        //skipping next char since we just matched it above
-        i++;
-        //finishing the loop down here so we don't have to check methodMatch !=== undefined at the top every char
-        for (; i < l && methodMatchIndex < methodMatch.length; i++, methodMatchIndex++) {
-            if (methodMatch[methodMatchIndex] !== data[i]) {
-                if (data[i] === undefined && methodMatchIndex > 1) {
-                    return -2;
-                }
-                return 0;
+    }
+    //if we already hit the end then we don't have enough data
+    if (i >= l) {
+        return -2;
+    }
+
+    //if you trust benchmarks then switch is faster than indexOf: http://jsperf.com/switch-vs-array/8
+    switch (data[i]) {
+        case _METHODSCHARS_[0]: //C
+            methodMatch = _METHODS_[0];
+            methodMatchIndex = 1;
+            break;
+        case _METHODSCHARS_[1]: //D
+            methodMatch = _METHODS_[1];
+            methodMatchIndex = 1;
+            break;
+        case _METHODSCHARS_[2]: //G
+            methodMatch = _METHODS_[2];
+            methodMatchIndex = 1;
+            break;
+        case _METHODSCHARS_[3]: //H
+            methodMatch = _METHODS_[3];
+            methodMatchIndex = 1;
+            break;
+        case _METHODSCHARS_[4]: //L
+            methodMatch = _METHODS_[4];
+            methodMatchIndex = 1;
+            break;
+        case _METHODSCHARS_[5]: //O
+            methodMatch = _METHODS_[5];
+            methodMatchIndex = 1;
+            break;
+        case _METHODSCHARS_[6]: //P
+            switch (data[i + 1]) {
+                case _P_METHODSCHARS_[0]: //A
+                    methodMatch = _METHODS_[6];
+                    break;
+                case _P_METHODSCHARS_[1]: //O
+                    methodMatch = _METHODS_[7];
+                    break;
+                case _P_METHODSCHARS_[2]: //U
+                    if (data[i + 2] === _PURGE_[2]) { //R
+                        methodMatch = _METHODS_[8];
+                    } else {
+                        methodMatch = _METHODS_[9];
+                    }
+                    break;
+                default:
+                    return false;
+                    break;
             }
-        }
-        if (methodMatchIndex < methodMatch.length) {
-            if (i >= l) {
-                return -2;
-            }
+            //we just verified the next char so skip it
+            i++;
+            methodMatchIndex = 2;
+            break;
+        case _METHODSCHARS_[7]: //S
+            methodMatch = _METHODS_[10];
+            methodMatchIndex = 1;
+            break;
+        case _METHODSCHARS_[8]: //T
+            methodMatch = _METHODS_[11];
+            methodMatchIndex = 1;
+            break;
+        case _METHODSCHARS_[9]: //U
+            methodMatch = _METHODS_[12];
+            methodMatchIndex = 1;
+            break;
+    }
+    if (methodMatch === 0) {
+        return 0;
+    }
+    //skipping next char since we just matched it above
+    i++;
+    //finishing the loop down here so we don't have to check methodMatch !=== undefined at the top every char
+    methodMatchLen = methodMatch.length;
+    for (; i < l && methodMatchIndex < methodMatchLen; i++, methodMatchIndex++) {
+        //if the method name does not match, invalid method name, return
+        if (methodMatch[methodMatchIndex] !== data[i]) {
             return 0;
         }
-        //we've found a valid command, now look for HTTP
-        //see if we can find HTTP on this line
-        for (; i < l && httpIndex < 4; i++) {
-            switch (data[i]) {
-                case _HTTP_[httpIndex]:
-                    httpIndex++;
-                    //its always at least HTTP/1.x so we know we will always have 4 chars after HTTP
-                    if (i + 3 >= l) {
-                        return -2;
-                    }
-                    break;
-                case _CR_:
-                case _LF_:
-                    //we didn't find HTTP since we already got to the new line
-                    return 0;
-                    break;
-                case _SPACE_:
-                    if (httpIndex > 0) {
-                        //we don't allow spaces in HTTP
-                        return 0;
-                    }
-                    break;
-            }
-        }
-        //break now since we just checked the first non space character
-        break;
     }
-    //httpIndex >= 4 then we found HTTP in the header and its a valid HTTP line, otherwise its not
-    return httpIndex >= 4 ? 1 : 0;
+    //if we don't have at least 8 bytes left (for (space)/(space)HTTP/) then we don't have enough data
+    if (i + 8 >= l) {
+        return -2;
+    }
+    //the next character after METHOD is space then a URL
+    if (data[i] !== _SPACE_) {
+        return 0;
+    }
+    i++;
+    //we've found a valid command, now look for HTTP/
+    for (; (i + 4) < l; i++) {
+        //todo: is there a better way to do this?
+        if (data[i] === _HTTP_[0] && data[i + 1] === _HTTP_[1] && data[i + 2] === _HTTP_[2] && data[i + 3] === _HTTP_[3] && data[i + 4] === _HTTP_[4]) {
+            return 1;
+        }
+        //we didn't find HTTP since we already got to a control character
+        if (data[i] <= 19) {
+            return 0;
+        }
+        //todo: we should verify the url characters are valid (like http_parser.c's normal_url_char)
+    }
+    //apache has a max header length of 8kb so if they already sent more than 8kb stop trying to think its HTTP and give up
+    if (l > 8192) {
+        return 0;
+    }
+    //we must've not found a newline character so we don't have enough data
+    return -2;
 }
 
 //via http://security.stackexchange.com/questions/34780/checking-client-hello-for-https-classification
@@ -269,21 +288,18 @@ function validateHTTPMethod(data, index, len) {
 function validateTLSHello(data, index, len) {
     var i = index || 0,
         l = len || data.length;
-    for (; i < l; i++) {
-        if (data[i] !== _TLSRECORD_) {
-            return 0;
+    if (data[i] !== _TLSRECORD_) {
+        return 0;
+    }
+    if (i + 5 >= l) {
+        return -2;
+    }
+    if (data[i + 1] === _TLS_SSL3_) {
+        if (data[i + 5] !== _TLS_CLIENT_HELLO_) {
+            //invalid message type but still tls
+            return -1;
         }
-        if (i + 5 >= l) {
-            return -2;
-        }
-        if (data[i + 1] === _TLS_SSL3_) {
-            if (data[i + 5] !== _TLS_CLIENT_HELLO_) {
-                //invalid message type but still tls
-                return -1;
-            }
-            return 1;
-        }
-        break;
+        return 1;
     }
     return 0;
 }
@@ -293,22 +309,19 @@ function validateTLSHello(data, index, len) {
 function validateSSLv2(data, index, len) {
     var i = index || 0,
         l = len || data.length;
-    for (; i < l; i++) {
-        if ((data[i] & _SSL2HEADERBYTE_) === 0) {
-            return 0;
-        }
-        if (i + 2 >= l) {
-            return -2;
-        }
-        if (data[i + 2] === _TLS_CLIENT_HELLO_) {
-            return 1;
-        }
-        //some clients are sending 80 03 00 04 00 00 00 14 00 00 00 02 00 00 00 04 00 00 03 e8 00 00 00 07 00 a0 00 00 80 03 00 09 00 00 00 08 00 00 00 00 00 9f 00 00
-        //which I'm not sure what protocol except that it looks like SSLv2 and we should reject it
-        if (data[i + 1] === 0x03 && data[i + 3] === 0x04) {
-            return -1;
-        }
-        break;
+    if ((data[i] & _SSL2HEADERBYTE_) === 0) {
+        return 0;
+    }
+    if (i + 2 >= l) {
+        return -2;
+    }
+    if (data[i + 2] === _TLS_CLIENT_HELLO_) {
+        return 1;
+    }
+    //some clients are sending 80 03 00 04 00 00 00 14 00 00 00 02 00 00 00 04 00 00 03 e8 00 00 00 07 00 a0 00 00 80 03 00 09 00 00 00 08 00 00 00 00 00 9f 00 00
+    //which I'm not sure what protocol except that it looks like SSLv2 and we should reject it
+    if (data[i + 1] === 0x03 && data[i + 3] === 0x04) {
+        return -1;
     }
     return 0;
 }
@@ -440,7 +453,7 @@ function onConnection(server, socket) {
             debug('Determined ERROR');
         }
         //result of -2 means we don't know the type yet but we sorta matched so keep waiting and restart the waiting timeout
-        if (res === -2 && resolvedType === 0) {
+        if (res === -2) {
             if (timeout !== null) {
                 clearTimeout(timeout);
                 //restart the timeout
@@ -453,6 +466,15 @@ function onConnection(server, socket) {
             debug('Error with determined type. Changing resolved type to error');
         }
         if (resolvedType !== 0) {
+            //clean up everything since we resolved the type
+            clearTimeout(timeout);
+            timeout = null;
+            socket.removeListener('readable', onReadable);
+            socket.removeListener('end', onEnd);
+            socket.removeListener('error', triggerClientError);
+            socket.removeListener('close', onClose);
+            socket.removeListener('close', onClose);
+
             socket.emit('_resolvedType', resolvedType);
 
             //we're no longer listening to readable anymore
@@ -473,16 +495,6 @@ function onConnection(server, socket) {
     socket.once('error', triggerClientError);
     socket.once('close', onClose);
     socket.once('_resolveTimeout', onTimeout);
-    socket.once('_resolvedType', function(type) {
-        clearTimeout(timeout);
-        timeout = null;
-        //clean up our listener since we resolved the type
-        socket.removeListener('readable', onReadable);
-        socket.removeListener('end', onEnd);
-        socket.removeListener('error', triggerClientError);
-        socket.removeListener('close', onClose);
-        socket.removeListener('close', onClose);
-    });
 }
 
 //todo: figure out a way to not store state on the socket
@@ -640,7 +652,7 @@ function stripProtocolFromOrigin(origin) {
 
 function addRequiredListeners(server) {
     server.addListener('clientError', function(err, socket) {
-        debug('clientError', err, socket);
+        debug('clientError', err);
         socket.destroy();
     });
 
