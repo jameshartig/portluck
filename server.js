@@ -221,7 +221,7 @@ function validateHTTPMethod(data, index, len) {
                     }
                     break;
                 default:
-                    return false;
+                    //no match so we don't set methodMatch which will cause us to return 0 after the outer switch
                     break;
             }
             //we just verified the next char so skip it
@@ -355,7 +355,6 @@ function typeDetermined(server, socket, type) {
             break;
         default:
             throw new Error('Unknown type determined for socket: ' + type);
-            break;
     }
     //need to call ondata for v0.10.x
     if (typeof socket.ondata === 'function') {
@@ -542,7 +541,7 @@ function onNewHTTPClient(server, listener, socket, writer) {
         writer.destroy();
     });
     if (!server.explicitDone) {
-        listener.once('end', function(err) {
+        listener.once('end', function() {
             process.nextTick(function() {
                 writer._defaultDone();
             });
