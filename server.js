@@ -332,6 +332,12 @@ function ParseError(code) {
 }
 util.inherits(ParseError, Error);
 
+function ReadError(code) {
+    this.message = 'Read Error';
+    this.code = code;
+}
+util.inherits(ReadError, Error);
+
 function typeDetermined(server, socket, type) {
     debug('typeDetermined', type);
     if (type === TYPE_ERROR) {
@@ -395,7 +401,7 @@ function onConnection(server, socket) {
     }
     function onClose() {
         debug('socket close');
-        triggerClientError('ECONNRESET');
+        triggerClientError(new ReadError('ECONNRESET'));
     }
     function onTimeout() {
         debug('timeout waiting for first byte');
