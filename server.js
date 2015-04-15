@@ -40,6 +40,7 @@ var _CR_ = "\r".charCodeAt(0),
         "U".charCodeAt(0)
     ],
     _PURGE_ = new Buffer("PURGE"),
+    _PUT_ = new Buffer("PUT"),
     _METHODS_ = [
         new Buffer("CONNECT"),
         new Buffer("DELETE"),
@@ -50,7 +51,7 @@ var _CR_ = "\r".charCodeAt(0),
         new Buffer("PATCH"),
         new Buffer("POST"),
         _PURGE_,
-        new Buffer("PUT"),
+        _PUT_,
         new Buffer("SEARCH"),
         new Buffer("TRACE"),
         new Buffer("UNLOCK")
@@ -165,7 +166,7 @@ ResponseWriter.prototype.destroy = function() {
 function validateHTTPMethod(data, index, len) {
     var i = index || 0,
         l = len || data.length,
-        methodMatch = 0,
+        methodMatch = null,
         methodMatchIndex = 0,
         methodMatchLen = 0;
     for (; i < l; i++) {
@@ -209,24 +210,39 @@ function validateHTTPMethod(data, index, len) {
             switch (data[i + 1]) {
                 case _P_METHODSCHARS_[0]: //A
                     methodMatch = _METHODS_[6];
+                    //we just verified the next char so skip it
+                    i++;
+                    methodMatchIndex = 2;
                     break;
                 case _P_METHODSCHARS_[1]: //O
                     methodMatch = _METHODS_[7];
+                    //we just verified the next char so skip it
+                    i++;
+                    methodMatchIndex = 2;
                     break;
                 case _P_METHODSCHARS_[2]: //U
-                    if (data[i + 2] === _PURGE_[2]) { //R
-                        methodMatch = _METHODS_[8];
-                    } else {
-                        methodMatch = _METHODS_[9];
+                    switch (data[i + 2]) {
+                        case _PURGE_[2]:
+                            methodMatch = _METHODS_[8];
+                            break;
+                        case _PUT_[2]:
+                            methodMatch = _METHODS_[9];
+                            break;
+                        case undefined: //not enough data
+                            return -2;
+                        default:
+                            break;
                     }
+                    //we just verified the next and next next char so skip them
+                    i += 2;
+                    methodMatchIndex = 3;
                     break;
+                case undefined: //not enough data
+                    return -2;
                 default:
                     //no match so we don't set methodMatch which will cause us to return 0 after the outer switch
                     break;
             }
-            //we just verified the next char so skip it
-            i++;
-            methodMatchIndex = 2;
             break;
         case _METHODSCHARS_[7]: //S
             methodMatch = _METHODS_[10];
@@ -241,7 +257,7 @@ function validateHTTPMethod(data, index, len) {
             methodMatchIndex = 1;
             break;
     }
-    if (methodMatch === 0) {
+    if (methodMatch === null) {
         return 0;
     }
     //skipping next char since we just matched it above

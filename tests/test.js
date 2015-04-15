@@ -215,6 +215,105 @@ exports.testHTTPPartials = function(test) {
     });
 };
 
+exports.testHTTPPartials2 = function(test) {
+    test.expect(1);
+    var conn;
+    server.removeAllListeners();
+    server.once('message', function(message) {
+        test.strictEqual(message.toString(), testString);
+    });
+    server.once('clientDisconnect', function() {
+        test.done();
+    });
+    conn = net.createConnection(listenOptions, function() {
+        conn.write('P');
+        setTimeout(function() {
+            conn.write('UT');
+        }, 500);
+        setTimeout(function() {
+            var postReq = [' /HTiTP HTTP/1.1',
+                'User-Agent: Test',
+                'Host: 127.0.0.1:14999',
+                'Content-Length: ' + (testString.length + 1),
+                '',
+                ''
+            ];
+            conn.end(postReq.join('\r\n') + testString + '\n');
+        }, 1500);
+    });
+    conn.setNoDelay(true);
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
+exports.testHTTPPartials3 = function(test) {
+    test.expect(1);
+    var conn;
+    server.removeAllListeners();
+    server.once('message', function(message) {
+        test.strictEqual(message.toString(), testString);
+    });
+    server.once('clientDisconnect', function() {
+        test.done();
+    });
+    conn = net.createConnection(listenOptions, function() {
+        conn.write('');
+        setTimeout(function() {
+            conn.write('POST');
+        }, 500);
+        setTimeout(function() {
+            var postReq = [' /HTiTP HTTP/1.1',
+                'User-Agent: Test',
+                'Host: 127.0.0.1:14999',
+                'Content-Length: ' + (testString.length + 1),
+                '',
+                ''
+            ];
+            conn.end(postReq.join('\r\n') + testString + '\n');
+        }, 1500);
+    });
+    conn.setNoDelay(true);
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
+exports.testHTTPPartials4 = function(test) {
+    test.expect(1);
+    var conn;
+    server.removeAllListeners();
+    server.once('message', function(message) {
+        test.strictEqual(message.toString(), testString);
+    });
+    server.once('clientDisconnect', function() {
+        test.done();
+    });
+    conn = net.createConnection(listenOptions, function() {
+        conn.write('POST /HTiTP HT');
+        setTimeout(function() {
+            var postReq = ['TP/1.1',
+                'User-Agent: Test',
+                'Host: 127.0.0.1:14999',
+                'Content-Length: ' + (testString.length + 1),
+                '',
+                ''
+            ];
+            conn.end(postReq.join('\r\n') + testString + '\n');
+        }, 1500);
+    });
+    conn.setNoDelay(true);
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
 exports.testSocketResponse = function(test) {
     test.expect(1);
     var conn;
