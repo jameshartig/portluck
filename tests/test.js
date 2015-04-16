@@ -587,6 +587,56 @@ exports.testRejectInvalidSSLv3 = function(test) {
     });
 };
 
+exports.testSimpleSocketLimited = function(test) {
+    test.expect(1);
+    var conn;
+
+    server.messageLimit = 5;
+    server.removeAllListeners();
+    server.once('message', function(message) {
+        test.strictEqual(message.toString(), testString.substr(-5));
+    });
+    server.once('clientDisconnect', function(socket) {
+        server.messageLimit = 0;
+        test.done();
+    });
+    conn = net.createConnection(listenOptions, function() {
+        conn.end(testString + "\n");
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
+exports.testSimpleSocketLimitedPartials = function(test) {
+    test.expect(1);
+    var conn;
+
+    server.messageLimit = 5;
+    server.removeAllListeners();
+    server.once('message', function(message) {
+        test.strictEqual(message.toString(), testString.substr(-5));
+    });
+    server.once('clientDisconnect', function() {
+        server.messageLimit = 0;
+        test.done();
+    });
+    conn = net.createConnection(listenOptions, function() {
+        conn.write(testString.substr(0, 3));
+        setTimeout(function() {
+            conn.end(testString.substr(3) + "\n");
+        }, 100);
+    });
+    conn.setNoDelay(true);
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
 
 /**
  * This MUST be the last test run!

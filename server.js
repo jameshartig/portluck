@@ -3,6 +3,7 @@ var net = require('net'),
     https = require('https'),
     util = require('util'),
     DelimiterStream = require('delimiterstream'),
+    bufferConcatLimit = require('buffer-concat-limit'),
     WebSocket = require('ws'),
     debug, parentEmit;
 
@@ -68,7 +69,6 @@ var _CR_ = "\r".charCodeAt(0),
     _TLS_CLIENT_HELLO_ = 0x01,
     _SSL2HEADERBYTE_ = 0x80,
     TYPE_ERROR = -1, TYPE_HTTP = 1, TYPE_RAW = 2, TYPE_TLS = 3, TYPE_PENDING = 4,
-    bufferConcatArray = new Array(2),
     EMPTY_STRING = '',
     i;
 
@@ -444,15 +444,11 @@ function onConnection(server, socket) {
             debug('Received null data from socket.read(). Ignoring...');
             return;
         }
+        //ignore the limit for the first packet since node already allocated that memory and delimiter stream will handle limiting the chunks
         if (receivedData === undefined) {
             receivedData = data;
         } else {
-            bufferConcatArray[0] = receivedData;
-            bufferConcatArray[1] = data;
-            //todo: this sucks we have to make a new Buffer on the second packet all the time
-            receivedData = Buffer.concat(bufferConcatArray, (receivedData.length + data.length));
-            bufferConcatArray[0] = undefined;
-            bufferConcatArray[1] = undefined;
+            receivedData = bufferConcatLimit(receivedData, data, server.messageLimit);
         }
         //data is a buffer
         len = receivedData.length;
@@ -633,7 +629,7 @@ function pendingConnectionListener(server, socket) {
 
 function listenForDelimiterData(server, listener, socket, writer) {
     //todo: allow passing in custom delimiter
-    var delimiterWrap = DelimiterStream.wrap(function(data) {
+    var delimiterWrap = DelimiterStream.wrap({dataLimit: server.messageLimit}, function(data) {
         parentEmit.call(server, 'message', data, writer, socket);
     });
     listener.on('data', delimiterWrap);
@@ -773,6 +769,15 @@ function Portluck(messageListener, opts) {
         };
     }
     this.explicitDone = options.explicitDone || false;
+    if (options.messageLimit >= 0) {
+        if (typeof options.messageLimit !== 'number') {
+            throw new TypeError('options.messageLimit must be a number');
+        }
+        debug('Setting message limit to ' + options.messageLimit);
+        this.messageLimit = options.messageLimit;
+    } else {
+        this.messageLimit = 0; //default is 1MB
+    }
 }
 util.inherits(Portluck, https.Server);
 parentEmit = https.Server.prototype.emit;
