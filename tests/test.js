@@ -1,10 +1,19 @@
 var portluck = require('../server.js'),
     net = require('net'),
     http = require('http'),
+    https = require('https'),
+    fs = require('fs'),
+    path = require('path'),
+    wdir = path.dirname(module.filename),
+    sslOptions = {
+        key: fs.readFileSync(path.resolve(wdir, './portluck.key.pem')),
+        cert: fs.readFileSync(path.resolve(wdir, './portluck.cert.pem'))
+    },
+    caFile = fs.readFileSync(path.resolve(wdir, './ca.cert.pem')),
     listenOptions = {port: 14999, host: '127.0.0.1'},
     httpOptions = {port: listenOptions.port, hostname: listenOptions.host, method: 'POST', path: '/', agent: false},
     testString = '{"test":true}',
-    server = new portluck.Server(),
+    server = new portluck.Server(sslOptions),
     listening = false;
 
 Object.extend = function(obj, obj2) {
@@ -636,6 +645,43 @@ exports.testSimpleSocketLimitedPartials = function(test) {
         test.ok(false);
     });
 };
+
+function testSimpleHTTPS(secureProtocol) {
+    return function(test) {
+        test.expect(3);
+        var error = false,
+            sslOptions = {hostname: 'localhost', ca: caFile, secureProtocol: secureProtocol},
+            conn;
+
+        server.removeAllListeners();
+        server.once('message', function(message) {
+            test.strictEqual(message.toString(), testString);
+        });
+        server.once('clientDisconnect', function() {
+            test.equal(error, false);
+            test.done();
+        });
+        conn = https.request(Object.extend(httpOptions, sslOptions), function(resp) {
+            test.equal(resp.statusCode, 200);
+        });
+        conn.on('error', function(err) {
+            console.log('HTTPS error', err);
+            error = true;
+        });
+        conn.setTimeout(5000);
+        conn.once('timeout', function() {
+            conn.destroy();
+            test.ok(false);
+        });
+        //send our post body and finish
+        conn.write(testString);
+        conn.end();
+    };
+}
+
+exports.testSimpleHTTPSTLS1 = testSimpleHTTPS('TLSv1_method');
+exports.testSimpleHTTPSTLS11 = testSimpleHTTPS('TLSv1_1_method');
+exports.testSimpleHTTPSTLS12 = testSimpleHTTPS('TLSv1_2_method');
 
 
 /**
