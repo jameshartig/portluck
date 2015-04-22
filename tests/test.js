@@ -683,6 +683,43 @@ exports.testSimpleHTTPSTLS1 = testSimpleHTTPS('TLSv1_method');
 exports.testSimpleHTTPSTLS11 = testSimpleHTTPS('TLSv1_1_method');
 exports.testSimpleHTTPSTLS12 = testSimpleHTTPS('TLSv1_2_method');
 
+//node no longer supports sslv3 so make sure that connecting over sslv3 errors
+exports.testSSL3Fail = function(test) {
+    test.expect(1);
+    var errors = 0,
+        sslOptions = {hostname: 'localhost', ca: caFile, secureProtocol: 'SSLv3_method'},
+        conn;
+
+    server.removeAllListeners();
+    server.once('clientError', function() {
+        //todo: once https://github.com/joyent/node/issues/9355 is fixed we should test what type of error this is
+        errors++;
+    });
+    try {
+        conn = https.request(Object.extend(httpOptions, sslOptions));
+        conn.once('error', function() {
+            errors++;
+        });
+    } catch (e) {
+        //todo: figure out a better way to test io.js sslv3
+        test.equal(e.message, 'SSLv3 methods disabled');
+        test.done();
+        return;
+    }
+    conn.once('close', function() {
+        test.equal(errors, 2);
+        test.done();
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+    //send our post body and finish
+    conn.write(testString);
+    conn.end();
+};
+
 
 /**
  * This MUST be the last test run!
