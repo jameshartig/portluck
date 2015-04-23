@@ -420,6 +420,9 @@ function onConnection(server, socket) {
         triggerClientError(new ReadError('ECONNRESET'));
     }
     function onTimeout() {
+        //stop listening for close now since were passing it off to pendingConnectionListener
+        //keep listening to end since that means the client sent a FIN
+        socket.removeListener('close', onClose);
         debug('timeout waiting for first byte');
         typeDetermined(server, socket, TYPE_PENDING);
         timeout = null;
@@ -490,7 +493,7 @@ function onConnection(server, socket) {
             socket.removeListener('end', onEnd);
             socket.removeListener('error', triggerClientError);
             socket.removeListener('close', onClose);
-            socket.removeListener('close', onClose);
+            socket.removeListener('_resolveTimeout', onTimeout);
 
             socket.emit('_resolvedType', resolvedType);
 
@@ -536,11 +539,15 @@ function onNewRawClient(server, socket, writer) {
         //clean up any listeners on data since we already sent that we're disconnected
         socket.removeAllListeners('data');
         socket.removeAllListeners('end');
+        socket.removeAllListeners('timeout');
         emitDisconnect(server, socket);
     });
     socket.once('error', function(err) {
         parentEmit.call(server, 'clientError', err, socket);
         writer.destroy();
+    });
+    socket.once('timeout', function() {
+        server.emit('timeout', socket);
     });
     //'end' listener needs to be added in listenForDelimiterData
 }
@@ -548,6 +555,7 @@ function onNewRawClient(server, socket, writer) {
 function onNewHTTPClient(server, listener, socket, writer) {
     emitConnect(server, socket, writer);
     //built-in http automatically handles closing on 'end'
+    //built-in http automatically fires timeout so we can ignore that here
     socket.once('close', function() {
         //clean up any listeners on data since we already sent that we're disconnected
         listener.removeAllListeners('data');
@@ -568,6 +576,7 @@ function onNewHTTPClient(server, listener, socket, writer) {
 }
 function onNewWSClient(server, listener, socket, writer) {
     //ws resets the timeout to 0 for some reason but we want to keep it what the user wants
+    //built-in http server automatically fires timeout so we can ignore that here
     socket.setTimeout(server.timeout);
 
     emitConnect(server, socket, writer);
@@ -619,11 +628,16 @@ function pendingConnectionListener(server, socket) {
             socket.end();
         }
     }
+    function onTimeout() {
+        server.emit('timeout', socket);
+    }
+    socket.once('timeout', onTimeout);
     socket.once('close', onClose);
     socket.once('end', onEnd);
     socket.once('_resolvedType', function() {
         socket.removeListener('end', onEnd);
         socket.removeListener('close', onClose);
+        socket.removeListener('timeout', onTimeout);
     });
 }
 
@@ -734,6 +748,7 @@ function Portluck(messageListener, opts) {
         if (typeof options.timeout !== 'number') {
             throw new TypeError('options.timeout must be a number');
         }
+        debug('Setting timeout to ' + options.timeout);
         this.timeout = options.timeout;
     } else {
         //2 minutes is the default timeout
@@ -847,12 +862,20 @@ Portluck.prototype.emit = function(type) {
             onUpgrade.call(this, msg, socket, arguments[3]);
             break;
         case 'clientError':
-            parentEmit.call(this, arguments[0], arguments[1], arguments[2]);
+            return parentEmit.call(this, arguments[0], arguments[1], arguments[2]);
+        case 'timeout': //socket
+            socket = arguments[1];
+            //if we get a timeout then immediately end socket
+            if (!socket.ended) {
+                debug('socket timed out and were ending');
+                socket.destroy();
+            }
             break;
         default:
-            parentEmit.apply(this, Array.prototype.slice.call(arguments, 0));
-            return;
+            return parentEmit.apply(this, Array.prototype.slice.call(arguments, 0));
     }
+    //we handled it so return true
+    return true;
 };
 Portluck.prototype.removeAllListeners = function(type) {
     var result = parentRemoveAllListeners.apply(this, Array.prototype.slice.call(arguments, 0));

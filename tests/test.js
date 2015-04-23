@@ -5,15 +5,16 @@ var portluck = require('../server.js'),
     fs = require('fs'),
     path = require('path'),
     wdir = path.dirname(module.filename),
-    sslOptions = {
+    serverOptions = {
         key: fs.readFileSync(path.resolve(wdir, './portluck.key.pem')),
-        cert: fs.readFileSync(path.resolve(wdir, './portluck.cert.pem'))
+        cert: fs.readFileSync(path.resolve(wdir, './portluck.cert.pem')),
+        timeout: 3000
     },
     caFile = fs.readFileSync(path.resolve(wdir, './ca.cert.pem')),
     listenOptions = {port: 14999, host: '127.0.0.1'},
     httpOptions = {port: listenOptions.port, hostname: listenOptions.host, method: 'POST', path: '/', agent: false},
     testString = '{"test":true}',
-    server = new portluck.Server(sslOptions),
+    server = new portluck.Server(serverOptions),
     listening = false;
 
 Object.extend = function(obj, obj2) {
@@ -718,6 +719,64 @@ exports.testSSL3Fail = function(test) {
     //send our post body and finish
     conn.write(testString);
     conn.end();
+};
+
+exports.testSocketTimeout = function(test) {
+    test.expect(2);
+    var gotConnect = false,
+        conn;
+
+    function testNoConnectionsLeft() {
+        server.getConnections(function(err, count) {
+            test.equal(count, 0);
+            test.done();
+        });
+    }
+
+    server.removeAllListeners();
+    server.once('clientConnect', function() {
+        gotConnect = true;
+    });
+    server.once('clientDisconnect', function() {
+        test.ok(gotConnect);
+        testNoConnectionsLeft();
+    });
+    conn = net.createConnection(listenOptions);
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+};
+
+exports.testHTTPTimeout = function(test) {
+    test.expect(2);
+    var gotConnect = false,
+        conn;
+
+    function testNoConnectionsLeft() {
+        server.getConnections(function(err, count) {
+            test.equal(count, 0);
+            test.done();
+        });
+    }
+
+    server.removeAllListeners();
+    server.once('clientConnect', function() {
+        gotConnect = true;
+    });
+    conn = net.createConnection(listenOptions, function() {
+        conn.write('GET / HTTP/1.1\r\n');
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+    conn.once('close', function() {
+        test.equal(gotConnect, false);
+        testNoConnectionsLeft();
+    });
 };
 
 
