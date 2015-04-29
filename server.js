@@ -401,6 +401,7 @@ function onConnection(server, socket) {
     var resolvedType = 0,
         receivedData, timeout;
 
+    //todo: move these all to named functions somehow
     function triggerClientError(err) {
         debug('socket error', err);
         clearTimeout(timeout);
@@ -420,11 +421,22 @@ function onConnection(server, socket) {
         triggerClientError(new ReadError('ECONNRESET'));
     }
     function onTimeout() {
-        //stop listening for close now since were passing it off to pendingConnectionListener
-        //keep listening to end since that means the client sent a FIN
-        socket.removeListener('close', onClose);
-        debug('timeout waiting for first byte');
-        typeDetermined(server, socket, TYPE_PENDING);
+        debug('socket timeout');
+        server.emit('timeout', socket);
+    }
+    function onResolveTimeout() {
+        if (server.rawFallback) {
+            //stop listening for close now since were passing it off to pendingConnectionListener
+            //keep listening to end since that means the client sent a FIN
+            socket.removeListener('close', onClose);
+            debug('timeout waiting for first byte');
+            typeDetermined(server, socket, TYPE_PENDING);
+        } else {
+            debug('timeout waiting for first byte but rawFallback is false. Setting socket timeout');
+            //set the timeout now to the value the user wants so it'll close if no more data is sent
+            socket.setTimeout(server.timeout);
+            socket.once('timeout', onTimeout);
+        }
         timeout = null;
     }
 
@@ -476,7 +488,7 @@ function onConnection(server, socket) {
         if (res === -2) {
             if (timeout !== null) {
                 clearTimeout(timeout);
-                //restart the timeout
+                //restart the timeout to wait another second before marking as pending
                 timeout = setTimeoutForSocket(server, socket);
             }
             debug('Not enough data for a resolution, waiting for more data');
@@ -493,7 +505,8 @@ function onConnection(server, socket) {
             socket.removeListener('end', onEnd);
             socket.removeListener('error', triggerClientError);
             socket.removeListener('close', onClose);
-            socket.removeListener('_resolveTimeout', onTimeout);
+            socket.removeListener('_resolveTimeout', onResolveTimeout);
+            socket.removeListener('timeout', onTimeout);
 
             socket.emit('_resolvedType', resolvedType);
 
@@ -514,7 +527,7 @@ function onConnection(server, socket) {
     socket.once('end', onEnd);
     socket.once('error', triggerClientError);
     socket.once('close', onClose);
-    socket.once('_resolveTimeout', onTimeout);
+    socket.once('_resolveTimeout', onResolveTimeout);
 }
 
 //todo: figure out a way to not store state on the socket
@@ -791,7 +804,7 @@ function Portluck(messageListener, opts) {
         debug('Setting message limit to ' + options.messageLimit);
         this.messageLimit = options.messageLimit;
     } else {
-        this.messageLimit = 0; //default is 1MB
+        this.messageLimit = 0; //default is unlimited
     }
 }
 util.inherits(Portluck, https.Server);

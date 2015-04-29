@@ -779,6 +779,31 @@ exports.testHTTPTimeout = function(test) {
     });
 };
 
+exports.testNoRawFallback = function(test) {
+    test.expect(1);
+    var gotConnect = false,
+        conn;
+
+    server.rawFallback = false;
+    server.removeAllListeners();
+    server.once('clientConnect', function() {
+        gotConnect = true;
+    });
+    conn = net.createConnection(listenOptions, function() {
+        conn.write('G');
+    });
+    /*conn.setTimeout(6000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });*/
+    conn.once('close', function() {
+        test.equal(gotConnect, false);
+        server.rawFallback = true;
+        test.done();
+    });
+};
+
 
 /**
  * This MUST be the last test run!

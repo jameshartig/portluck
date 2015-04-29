@@ -1,7 +1,7 @@
 # Portluck #
 
 Accepts arbitrary data on a single port via HTTP, HTTPS, WebSockets, or a TCP socket. Optimally data
-should be delimited by a `\n` character, or not to speed up connection detection (read below).
+should be delimited by a `\n` character to speed up connection detection (read below).
 
 Since we're sniffing for the connection type you will need to send at **least** 3 bytes over a raw TCP
 socket in order to trigger a `message` event. If those 3 bytes happen to match the beginning of a valid HTTP
@@ -11,7 +11,7 @@ method we additionally wait for `\r` or `\n` to determine that it is/isn't an HT
 
 ### new portluck.Server([messageCallback][, options]) ###
 Creates a new server that inherits [https.Server](https://nodejs.org/api/https.html#https_class_https_server).
-If `messageCallback` is sent, it will be added as a listener for `"message"` event.
+If `messageCallback` is sent, it will be added as a listener for `"message"` event. See bottom for `options`.
 
 ### Event: 'message' ###
 Fired when a client sends a message. Event is sent `(message, writer, socket)`. `message` is a buffer containing
@@ -65,7 +65,7 @@ Boolean for whether we should fallback to a raw socket connetion if http/tls/web
 
 ### timeout ###
 See [net.Server.timeout](https://nodejs.org/api/http.html#http_server_timeout). Defaults to 2 minutes.
-Note: We wait 2 seconds to try and wait for bytes to determine what type of connection it is. Your `timeout
+Note: We wait 1 second to try and wait for bytes to determine what type of connection it is. Your `timeout`
 applies AFTER that if no data is sent immediately.
 
 ### allowOrigin ###
@@ -76,6 +76,10 @@ Note: `*.example.com` is special and matches `example.com`, `www.example.com`, a
 ### explicitDone ###
 If set to `true` you are **required** to call `writer.done()` on every message received. By default, messages are
 done on the nextTick after firing `'message'` event.
+
+### messageLimit ###
+Maximum number of bytes per message. This is also the max size of the buffer when sniffing for connection type.
+Defaults to 0, which means no limit.
 
 ## Todo ##
 
