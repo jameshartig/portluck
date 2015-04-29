@@ -1,5 +1,7 @@
 # Portluck #
 
+[![Build Status](https://travis-ci.org/fastest963/portluck.svg?branch=master)](https://travis-ci.org/fastest963/portluck)
+
 Accepts arbitrary data on a single port via HTTP, HTTPS, WebSockets, or a TCP socket. Optimally data
 should be delimited by a `\n` character to speed up connection detection (read below).
 
