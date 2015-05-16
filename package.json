@@ -1,6 +1,6 @@
 {
   "name": "portluck",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A unified HTTP/TCPSocket/WebSocket server for receiving arbitrary data",
   "main": "server.js",
   "directories": {
@@ -21,9 +21,18 @@
     "type": "git",
     "url": "git://github.com/fastest963/portluck.git"
   },
-  "engines": {"node": ">=0.12.0"},
+  "engines": {
+    "node": ">=0.12.0"
+  },
   "engineStrict": true,
-  "keywords": ["http", "websocket", "tcpsocket", "socket", "server", "port"],
+  "keywords": [
+    "http",
+    "websocket",
+    "tcpsocket",
+    "socket",
+    "server",
+    "port"
+  ],
   "author": "James Hartig <fastest963@gmail.com>",
   "license": "MIT",
   "readmeFilename": "README.md"
