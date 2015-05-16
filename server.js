@@ -80,7 +80,7 @@ function ResponseWriter(client) {
     this._encoding = undefined;
     this.ended = false;
     this._pendingWrite = false;
-    this._doneAfterWrite = false;
+    this._endAfterWrite = false;
 }
 ResponseWriter.prototype.setDefaultEncoding = function(encoding) {
     if (encoding === 'binary' || encoding === 'buffer') {
@@ -108,8 +108,8 @@ ResponseWriter.prototype.write = function(message) {
     } else {
         this._client.write(message, this._encoding);
     }
-    if (this._doneAfterWrite) {
-        this.done();
+    if (this._endAfterWrite) {
+        this.end();
     }
 };
 ResponseWriter.prototype.writeHead = function(code, message, headers) {
@@ -117,7 +117,22 @@ ResponseWriter.prototype.writeHead = function(code, message, headers) {
         this._client.writeHead(code, message, headers);
     }
 };
-ResponseWriter.prototype.end = function() {
+ResponseWriter.prototype.setHeader = function(name, value) {
+    if (this._client instanceof http.ServerResponse && !this._client.headersSent) {
+        this._client.setHeader(name, value);
+    }
+};
+ResponseWriter.prototype.removeHeader = function(name) {
+    if (this._client instanceof http.ServerResponse && !this._client.headersSent) {
+        this._client.removeHeader(name);
+    }
+};
+ResponseWriter.prototype.getHeader = function(name) {
+    if (this._client instanceof http.ServerResponse && !this._client.headersSent) {
+        return this._client.getHeader(name);
+    }
+};
+ResponseWriter.prototype.close = function() {
     if (this._client instanceof WebSocket) {
         this._client.close();
         return;
@@ -128,13 +143,13 @@ ResponseWriter.prototype.end = function() {
     }
     this._client.end();
 };
-ResponseWriter.prototype._defaultDone = function() {
+ResponseWriter.prototype._defaultEnd = function() {
     if (this._pendingWrite) {
         return;
     }
-    return this.done();
+    return this.end();
 };
-ResponseWriter.prototype.done = function(message) {
+ResponseWriter.prototype.end = function(message) {
     if (message !== undefined) {
         this.write(message);
         if (this.ended) {
@@ -150,10 +165,13 @@ ResponseWriter.prototype.done = function(message) {
         this._client.end();
     }
 };
-ResponseWriter.prototype.doneAfterWrite = function() {
+ResponseWriter.prototype.done = ResponseWriter.prototype.end;
+
+ResponseWriter.prototype.endAfterWrite = function() {
     this._pendingWrite = true;
-    this._doneAfterWrite = true;
+    this._endAfterWrite = true;
 };
+ResponseWriter.prototype.doneAfterWrite = ResponseWriter.prototype.endAfterWrite;
 ResponseWriter.prototype.destroy = function() {
     if (this._client instanceof WebSocket) {
         this._client.terminate();
@@ -579,10 +597,10 @@ function onNewHTTPClient(server, listener, socket, writer) {
         parentEmit.call(server, 'clientError', err, socket);
         writer.destroy();
     });
-    if (!server.explicitDone) {
+    if (!server.explicitEnd) {
         listener.once('end', function() {
             process.nextTick(function() {
-                writer._defaultDone();
+                writer._defaultEnd();
             });
         });
     }
@@ -625,7 +643,7 @@ function rawConnectionListener(server, socket) {
     //if we get a FIN, end the writer on the next tick
     socket.once('end', function() {
         process.nextTick(function() {
-            writer.end();
+            writer.close();
         });
     });
 }
@@ -796,7 +814,7 @@ function Portluck(messageListener, opts) {
             return true;
         };
     }
-    this.explicitDone = options.explicitDone || false;
+    this.explicitEnd = options.explicitEnd || options.explicitDone || false;
     if (options.messageLimit >= 0) {
         if (typeof options.messageLimit !== 'number') {
             throw new TypeError('options.messageLimit must be a number');

@@ -40,19 +40,19 @@ Accepts the same parameters and options as [http.Server.listen](http://nodejs.or
 
 ### writer.write(message) ###
 Writes `message` to the underlying source socket. `message` can be a string or Buffer. If you plan on
-responding to messages asynchronously, you should call `doneAfterWrite` since HTTP/HTTPS requests are
-automatically closed on the next tick (unless you sent `explicitDone` option).
+responding to messages asynchronously, you should call `endAfterWrite` since HTTP/HTTPS requests are
+automatically closed on the next tick (unless you sent `explicitEnd` option).
 
-### writer.doneAfterWrite() ###
-If an automatic `done()` is scheduled to happen next tick, calling `doneAfterWrite` prevents that from
-happening and waits to automatically call done until the next `write()`. This is not needed if you created
-the server with the `explicitDone` option.
+### writer.endAfterWrite() ###
+If an automatic `end()` is scheduled to happen next tick, calling `doneAfterWrite` prevents that from
+happening and waits to automatically call `end()` until the next `write()`. This is not needed if you created
+the server with the `explicitEnd` option.
 
-### writer.done([message]) ###
+### writer.end([message]) ###
 Writes `message`, if passed, to the underlying source socket. If the source was a HTTP/HTTPS request, it is
 `end`ed and a response is sent. No more writes are allowed on this writer.
 
-### writer.end() ###
+### writer.close() ###
 Closes (by sending a FIN) the underlying source socket. No more writes are allowed on this writer.
 
 ### writer.destroy() ###
@@ -75,9 +75,9 @@ Origin to respond with `Allow-Access-Control-Origin` for. Value can be a string 
 contain a single `*` for wildcard matching `[a-zA-Z0-9_-]`. **Do not add a protocol (like `https://`).**
 Note: `*.example.com` is special and matches `example.com`, `www.example.com`, and `www.staging.example.com`.
 
-### explicitDone ###
-If set to `true` you are **required** to call `writer.done()` on every message received. By default, messages are
-done on the nextTick after firing `'message'` event.
+### explicitEnd ###
+If set to `true` you are **required** to call `writer.end()` on every message received. By default, messages are
+ended on the nextTick after firing `'message'` event.
 
 ### messageLimit ###
 Maximum number of bytes per message. This is also the max size of the buffer when sniffing for connection type.

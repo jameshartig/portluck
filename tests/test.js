@@ -449,7 +449,7 @@ exports.testHTTPResponse = function(test) {
 exports.testHTTPResponseDelayed = function(test) {
     test.expect(2);
     var conn;
-    server.explicitDone = true;
+    server.explicitEnd = true;
     server.removeAllListeners();
     server.once('message', function(message, writer) {
         test.strictEqual(message.toString(), testString);
@@ -468,20 +468,20 @@ exports.testHTTPResponseDelayed = function(test) {
         test.ok(false);
     });
     conn.once('close', function() {
-        server.explicitDone = false;
+        server.explicitEnd = false;
         test.done();
     });
     conn.write(testString);
     conn.end();
 };
 
-exports.testHTTPResponseDoneAfterWrite = function(test) {
+exports.testHTTPResponseEndAfterWrite = function(test) {
     test.expect(2);
     var conn;
     server.removeAllListeners();
     server.once('message', function(message, writer) {
         test.strictEqual(message.toString(), testString);
-        writer.doneAfterWrite();
+        writer.endAfterWrite();
         setTimeout(function() {
             writer.write(testString);
         }, 100);
@@ -503,13 +503,13 @@ exports.testHTTPResponseDoneAfterWrite = function(test) {
     conn.end();
 };
 
-exports.testHTTPImmediatelyDoneAfterWrite = function(test) {
+exports.testHTTPImmediatelyEndAfterWrite = function(test) {
     test.expect(2);
     var conn;
     server.removeAllListeners();
     server.once('message', function(message, writer) {
         test.strictEqual(message.toString(), testString);
-        writer.doneAfterWrite();
+        writer.endAfterWrite();
         writer.done(testString);
     });
     conn = http.request(httpOptions, function(resp) {
