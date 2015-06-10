@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "buffer-concat-limit": "0.0.1",
-    "delimiterstream": ">=0.3.0-beta.1",
+    "delimiterstream": "^0.3.0",
     "ws": "^0.7.0"
   },
   "devDependencies": {
