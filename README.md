@@ -50,7 +50,8 @@ the server with the `explicitEnd` option.
 
 ### writer.end([message]) ###
 Writes `message`, if passed, to the underlying source socket. If the source was a HTTP/HTTPS request, it is
-`end`ed and a response is sent. No more writes are allowed on this writer.
+`end`ed and a response is sent. No more writes are allowed on this writer. If the request was already terminated
+on the client side then `message` will be silently dropped and not sent.
 
 ### writer.close() ###
 Closes (by sending a FIN) the underlying source socket. No more writes are allowed on this writer.

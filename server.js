@@ -150,14 +150,12 @@ ResponseWriter.prototype._defaultEnd = function() {
     return this.end();
 };
 ResponseWriter.prototype.end = function(message) {
+    if (this._client.ended || (this._client instanceof WebSocket && this._client.readyState !== WebSocket.OPEN)) {
+        this.ended = true;
+        return;
+    }
     if (message !== undefined) {
         this.write(message);
-        if (this.ended) {
-            return;
-        }
-    }
-    if (this._client.ended) {
-        return;
     }
     //automatically close http responses
     if (this._client instanceof http.ServerResponse) {
