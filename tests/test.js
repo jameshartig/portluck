@@ -708,8 +708,11 @@ exports.testSSL3Fail = function(test) {
         return;
     }
     conn.once('close', function() {
-        test.equal(errors, 2);
-        test.done();
+        //this test is pretty flaky and we have to wait for clientError to be fired for some reason
+        setTimeout(function() {
+            test.equal(errors, 2);
+            test.done();
+        }, 300);
     });
     conn.setTimeout(5000);
     conn.once('timeout', function() {
