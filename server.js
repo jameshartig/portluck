@@ -830,6 +830,13 @@ parentRemoveAllListeners = https.Server.prototype.removeAllListeners;
 //should we fallback to a raw socket?
 Portluck.prototype.rawFallback = true;
 
+Portluck.prototype.invalidMethodHandler = function(msg, resp) {
+    //405 means "Method Not Allowed"
+    resp.setHeader('Allow', 'POST,PUT');
+    resp.writeHead(405);
+    resp.end('Allowed methods are POST or PUT.');
+};
+
 //override a bunch of the events in emit so they don't bubble up
 Portluck.prototype.emit = function(type) {
     var msg, resp, writer, socket;
@@ -868,10 +875,7 @@ Portluck.prototype.emit = function(type) {
                 resp.end();
                 break;
             } else if (msg.method !== 'POST' && msg.method !== 'PUT') {
-                //405 means "Method Not Allowed"
-                resp.setHeader('Allow', 'POST,PUT');
-                resp.writeHead(405);
-                resp.end('Allowed methods are POST or PUT.');
+                this.invalidMethodHandler(msg, resp);
                 break;
             }
             resp.statusCode = 200; //default the statusCode to 200

@@ -1,5 +1,8 @@
 ## Changelog ##
 
+### 0.3.2 ###
+* Added overridable invalidMethodHandler to handle GET requests
+
 ### 0.3.0 ###
 * ResponseWriter.end is now ResponseWriter.close
 * ResponseWriter.end is now an alias for done

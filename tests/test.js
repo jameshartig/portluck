@@ -552,6 +552,35 @@ exports.testGETHTTP = function(test) {
     conn.end();
 };
 
+exports.testGETOverrideHTTP = function(test) {
+    test.expect(2);
+    var conn,
+        oldHandler = server.invalidMethodHandler;
+    server.invalidMethodHandler = function(msg, resp) {
+        test.ok(true);
+        oldHandler(msg, resp);
+    };
+
+    server.removeAllListeners();
+    server.once('clientConnect', function() {
+        test.ok(false);
+    });
+    server.once('message', function() {
+        test.ok(false);
+    });
+    conn = http.request(Object.extend(httpOptions, {method: 'GET'}), function(resp) {
+        test.equal(resp.statusCode, 405);
+        server.invalidMethodHandler = oldHandler;
+        test.done();
+    });
+    conn.setTimeout(5000);
+    conn.once('timeout', function() {
+        conn.destroy();
+        test.ok(false);
+    });
+    conn.end();
+};
+
 exports.testRejectSSLv2 = function(test) {
     test.expect(1);
     var conn;
