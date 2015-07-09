@@ -2,6 +2,10 @@
 
 ### 0.3.2 ###
 * Added overridable invalidMethodHandler to handle GET requests
+* Detect when websocket is closed before writing in end()
+
+### 0.3.1 ###
+* Update to latest delimiterstream
 
 ### 0.3.0 ###
 * ResponseWriter.end is now ResponseWriter.close
