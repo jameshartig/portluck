@@ -75,6 +75,8 @@ applies AFTER that if no data is sent immediately.
 Origin to respond with `Allow-Access-Control-Origin` for. Value can be a string or RegExp. String values can
 contain a single `*` for wildcard matching `[a-zA-Z0-9_-]`. **Do not add a protocol (like `https://`).**
 Note: `*.example.com` is special and matches `example.com`, `www.example.com`, and `www.staging.example.com`.
+Note 2: A origin ending in `:*` will allow any ports. So `example.com:*` would match `example.com` and
+`example.com:4000`.
 
 ### explicitEnd ###
 If set to `true` you are **required** to call `writer.end()` on every message received. By default, messages are

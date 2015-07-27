@@ -784,33 +784,7 @@ function Portluck(messageListener, opts) {
         this.timeout = 120 * 1000;
     }
     if (options.allowOrigin !== undefined) {
-        var originMatch = options.allowOrigin;
-        if (typeof originMatch === 'string') {
-            //optimize for *.example.com
-            if (originMatch.indexOf('*.') === 0) {
-                originMatch = new RegExp('(?:[a-zA-Z0-9_\\-]+.)?' + originMatch.substr(2), 'i');
-            } else if (originMatch.indexOf('*') !== -1) {
-                originMatch = new RegExp(originMatch.replace('*', '(?:[a-zA-Z0-9_\\-]+)'), 'i');
-            } else {
-                originMatch = originMatch.toLowerCase();
-            }
-        }
-        if (originMatch instanceof RegExp) {
-            this.validateOrigin = function(o) {
-                var origin = o ? stripProtocolFromOrigin(o) : EMPTY_STRING;
-                return originMatch.test(origin);
-            };
-        } else {
-            this.validateOrigin = function(o) {
-                var origin = o ? stripProtocolFromOrigin(o) : EMPTY_STRING;
-                //only lowercase if we have to
-                return (origin === originMatch) || (origin.toLowerCase() === originMatch);
-            };
-        }
-    } else {
-        this.validateOrigin = function() {
-            return true;
-        };
+        this.setValidOrigin(options.allowOrigin);
     }
     this.explicitEnd = options.explicitEnd || options.explicitDone || false;
     if (options.messageLimit >= 0) {
@@ -829,6 +803,50 @@ parentRemoveAllListeners = https.Server.prototype.removeAllListeners;
 
 //should we fallback to a raw socket?
 Portluck.prototype.rawFallback = true;
+
+Portluck.prototype.validateOrigin = function() {
+    return true;
+};
+
+Portluck.prototype.setValidOrigin = function(origin) {
+    var originMatch = origin,
+        convertToRegExp = false;
+    if (typeof originMatch === 'string') {
+        //optimize for *.example.com
+        if (originMatch.indexOf('*.') === 0) {
+            convertToRegExp = true;
+            originMatch = '(?:[a-z0-9_\\-]+.)?' + originMatch.substr(2);
+        }
+        //check for :* to allow any ports
+        if (originMatch.indexOf(':*') === originMatch.length - 2) {
+            convertToRegExp = true;
+            //if its 443/80 the port usually isn't included so we're making this match optional
+            originMatch = originMatch.replace(/:\*$/g, '(?:\\:[0-9]+)?');
+        }
+        //now just replace all *'s
+        if (originMatch.indexOf('*') !== -1) {
+            convertToRegExp = true;
+            originMatch = originMatch.replace(/\*/g, '(?:[a-z0-9_\\-]+)');
+        }
+        if (convertToRegExp) {
+            originMatch = new RegExp(originMatch + '$', 'i');
+        } else {
+            originMatch = originMatch.toLowerCase();
+        }
+    }
+    if (originMatch instanceof RegExp) {
+        this.validateOrigin = function(o) {
+            var origin = o ? stripProtocolFromOrigin(o) : EMPTY_STRING;
+            return originMatch.test(origin);
+        };
+    } else {
+        this.validateOrigin = function(o) {
+            var origin = o ? stripProtocolFromOrigin(o) : EMPTY_STRING;
+            //only lowercase if we have to
+            return (origin === originMatch) || (origin.toLowerCase() === originMatch);
+        };
+    }
+};
 
 Portluck.prototype.invalidMethodHandler = function(msg, resp) {
     //405 means "Method Not Allowed"

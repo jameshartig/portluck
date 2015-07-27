@@ -1,6 +1,11 @@
 ## Changelog ##
 
 ### 0.3.3 ###
+* Added setValidOrigin(newOrigin) to Portluck
+* Fixed origin domain checking
+* Added `:*` to special origin handling
+
+### 0.3.3 ###
 * Added Access-Control-Allow-Headers
 
 ### 0.3.2 ###

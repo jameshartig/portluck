@@ -165,6 +165,28 @@ exports.exampleCom = function(test) {
     });
 };
 
+exports.exampleComSetValidOrigin = function(test) {
+    test.expect(1);
+    serverOptions.allowOrigin = 'nowork.com';
+    reListen(function() {
+        var conn;
+        server.setValidOrigin('example.com');
+        conn = http.request(httpOptions, function(resp) {
+            test.equal(resp.statusCode, 200);
+            test.done();
+        });
+        conn.setHeader('Origin', 'example.com');
+        conn.setTimeout(5000);
+        conn.once('timeout', function() {
+            conn.destroy();
+            test.ok(false);
+        });
+        //send our post body and finish
+        conn.write(testString);
+        conn.end();
+    });
+};
+
 //for some reason this throws a HPE_INVALID_METHOD if you write a http body
 exports.exampleComPreflight = function(test) {
     test.expect(2);
@@ -186,6 +208,117 @@ exports.exampleComPreflight = function(test) {
             test.ok(false);
         });
         //send our post body and finish
+        conn.end();
+    });
+};
+
+exports.exampleComFaked = function(test) {
+    test.expect(1);
+    serverOptions.allowOrigin = 'example.com';
+    reListen(function() {
+        var conn;
+        server.once('clientConnect', function(writer, socket) {
+            test.ok(false);
+        });
+        conn = http.request(httpOptions, function(resp) {
+            test.equal(resp.statusCode, 400);
+            test.done();
+        });
+        conn.setHeader('Origin', 'example.com.co.nz');
+        conn.setTimeout(5000);
+        conn.once('timeout', function() {
+            conn.destroy();
+            test.ok(false);
+        });
+        //send our post body and finish
+        conn.write(testString);
+        conn.end();
+    });
+};
+
+exports.starExampleComFaked = function(test) {
+    test.expect(1);
+    serverOptions.allowOrigin = '*.example.com';
+    reListen(function() {
+        var conn;
+        server.once('clientConnect', function(writer, socket) {
+            test.ok(false);
+        });
+        conn = http.request(httpOptions, function(resp) {
+            test.equal(resp.statusCode, 400);
+            test.done();
+        });
+        conn.setHeader('Origin', 'example.com.co.nz');
+        conn.setTimeout(5000);
+        conn.once('timeout', function() {
+            conn.destroy();
+            test.ok(false);
+        });
+        //send our post body and finish
+        conn.write(testString);
+        conn.end();
+    });
+};
+
+exports.exampleComAnyPort80 = function(test) {
+    test.expect(1);
+    serverOptions.allowOrigin = 'example.com:*';
+    reListen(function() {
+        var conn;
+        conn = http.request(httpOptions, function(resp) {
+            test.equal(resp.statusCode, 200);
+            test.done();
+        });
+        conn.setHeader('Origin', 'example.com');
+        conn.setTimeout(5000);
+        conn.once('timeout', function() {
+            conn.destroy();
+            test.ok(false);
+        });
+        //send our post body and finish
+        conn.write(testString);
+        conn.end();
+    });
+};
+
+exports.exampleComAnyPort4000 = function(test) {
+    test.expect(1);
+    serverOptions.allowOrigin = 'example.com:*';
+    reListen(function() {
+        var conn;
+        conn = http.request(httpOptions, function(resp) {
+            test.equal(resp.statusCode, 200);
+            test.done();
+        });
+        conn.setHeader('Origin', 'example.com:4000');
+        conn.setTimeout(5000);
+        conn.once('timeout', function() {
+            conn.destroy();
+            test.ok(false);
+        });
+        //send our post body and finish
+        conn.write(testString);
+        conn.end();
+    });
+};
+
+exports.exampleComFakedAnyPort4000 = function(test) {
+    test.expect(1);
+    serverOptions.allowOrigin = 'example.com:*';
+    reListen(function() {
+        var conn;
+        conn = http.request(httpOptions, function(resp) {
+            test.equal(resp.statusCode, 400);
+            test.done();
+        });
+        conn.setHeader('Origin', 'example.com.co.nz:4000');
+        conn.setTimeout(5000);
+        conn.once('timeout', function() {
+            conn.destroy();
+            test.ok(false);
+        });
+        //send our post body and finish
+        conn.write(testString);
         conn.end();
     });
 };
