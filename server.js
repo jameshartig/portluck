@@ -867,6 +867,8 @@ Portluck.prototype.emit = function(type) {
                 resp.setHeader('Access-Control-Allow-Origin', msg.headers.origin);
                 resp.setHeader('Access-Control-Allow-Methods', 'POST, PUT');
                 resp.setHeader('Access-Control-Allow-Credentials', 'true');
+                //allow some common headers (http://www.w3.org/TR/cors/#simple-header are automatically allowed)
+                resp.setHeader('Access-Control-Allow-Headers', 'DNT,User-Agent,X-Requested-With,Content-Type');
             }
 
             //respond to OPTIONS requests for pre-flight access controls

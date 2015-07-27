@@ -42,7 +42,7 @@ function reListen(cb) {
 }
 
 exports.wildcardTestExampleCom = function(test) {
-    test.expect(3);
+    test.expect(4);
     serverOptions.allowOrigin = '*.example.com';
     reListen(function() {
         var conn;
@@ -51,6 +51,7 @@ exports.wildcardTestExampleCom = function(test) {
         });
         conn = http.request(httpOptions, function(resp) {
             test.equal(resp.headers['access-control-allow-origin'], 'test.example.com');
+            test.equal(resp.headers['access-control-allow-headers'], 'DNT,User-Agent,X-Requested-With,Content-Type');
             test.equal(resp.statusCode, 200);
             test.done();
         });
@@ -139,7 +140,7 @@ exports.wwwExampleCom = function(test) {
 };
 
 exports.exampleCom = function(test) {
-    test.expect(3);
+    test.expect(4);
     serverOptions.allowOrigin = 'example.com';
     reListen(function() {
         var conn;
@@ -148,6 +149,7 @@ exports.exampleCom = function(test) {
         });
         conn = http.request(httpOptions, function(resp) {
             test.equal(resp.headers['access-control-allow-origin'], 'example.com');
+            test.equal(resp.headers['access-control-allow-headers'], 'DNT,User-Agent,X-Requested-With,Content-Type');
             test.equal(resp.statusCode, 200);
             test.done();
         });

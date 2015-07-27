@@ -1,5 +1,8 @@
 ## Changelog ##
 
+### 0.3.3 ###
+* Added Access-Control-Allow-Headers
+
 ### 0.3.2 ###
 * Added overridable invalidMethodHandler to handle GET requests
 * Detect when websocket is closed before writing in end()
