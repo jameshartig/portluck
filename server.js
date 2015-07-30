@@ -848,6 +848,8 @@ Portluck.prototype.setValidOrigin = function(origin) {
     }
 };
 
+// origin headers ARE NOT checked before calling invalidMethodHandler
+// they can be manually checked here by calling this.validateOrigin(msg.headers.origin)
 Portluck.prototype.invalidMethodHandler = function(msg, resp) {
     //405 means "Method Not Allowed"
     resp.setHeader('Allow', 'POST,PUT');
@@ -875,6 +877,12 @@ Portluck.prototype.emit = function(type) {
             resp.setHeader('Content-Type', 'text/plain');
             resp.removeHeader('Transfer-Encoding');
 
+            //if the method is GET then do not check origin headers
+            if (msg.method !== 'POST' && msg.method !== 'PUT' && msg.method !== 'OPTIONS') {
+                this.invalidMethodHandler(msg, resp);
+                break;
+            }
+
             //call validateOrigin even if they didn't send one since we might require an origin
             if (!this.validateOrigin(msg.headers.origin)) {
                 debug('invalid origin header sent', msg.headers.origin);
@@ -894,10 +902,8 @@ Portluck.prototype.emit = function(type) {
                 resp.writeHead(200);
                 resp.end();
                 break;
-            } else if (msg.method !== 'POST' && msg.method !== 'PUT') {
-                this.invalidMethodHandler(msg, resp);
-                break;
             }
+
             resp.statusCode = 200; //default the statusCode to 200
             writer = new ResponseWriter(resp);
             onNewHTTPClient(this, msg, msg.socket, writer);

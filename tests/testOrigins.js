@@ -323,6 +323,27 @@ exports.exampleComFakedAnyPort4000 = function(test) {
     });
 };
 
+exports.originNotCheckedForGet = function(test) {
+    test.expect(1);
+    serverOptions.allowOrigin = 'example.com';
+    reListen(function() {
+        var conn;
+        conn = http.request(Object.extend(httpOptions, {method: 'GET'}), function(resp) {
+            test.equal(resp.statusCode, 405);
+            test.done();
+        });
+        conn.setHeader('Origin', 'somethingelse.com');
+        conn.setTimeout(5000);
+        conn.once('timeout', function() {
+            conn.destroy();
+            test.ok(false);
+        });
+        //send our post body and finish
+        conn.write(testString);
+        conn.end();
+    });
+};
+
 exports.testClose = function(test) {
     if (!listening) {
         test.done();

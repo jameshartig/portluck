@@ -1,5 +1,8 @@
 ## Changelog ##
 
+### 0.3.5 ###
+* Do not check origin for GET requests
+
 ### 0.3.4 ###
 * Added setValidOrigin(newOrigin) to Portluck
 * Fixed origin domain checking
