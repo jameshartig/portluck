@@ -1,5 +1,8 @@
 ## Changelog ##
 
+### 0.4.0 ###
+* Added `allowUndefinedOrigin` which defaults to true
+
 ### 0.3.5 ###
 * Do not check origin for GET requests
 

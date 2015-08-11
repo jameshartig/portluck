@@ -78,6 +78,11 @@ Note: `*.example.com` is special and matches `example.com`, `www.example.com`, a
 Note 2: A origin ending in `:*` will allow any ports. So `example.com:*` would match `example.com` and
 `example.com:4000`.
 
+### allowUndefinedOrigin ###
+Automatically allow a request if the origin is undefined. You usually want this to be true since browsers only
+don't send origin headers for same-domain requests. Defaults to true. If this is false, then the undefined
+origin will be passed to `allowOrigin` function/regex.
+
 ### explicitEnd ###
 If set to `true` you are **required** to call `writer.end()` on every message received. By default, messages are
 ended on the nextTick after firing `'message'` event.

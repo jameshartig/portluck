@@ -786,6 +786,9 @@ function Portluck(messageListener, opts) {
     if (options.allowOrigin !== undefined) {
         this.setValidOrigin(options.allowOrigin);
     }
+    if (options.allowUndefinedOrigin !== undefined) {
+        this.allowUndefinedOrigin = options.allowUndefinedOrigin;
+    }
     this.explicitEnd = options.explicitEnd || options.explicitDone || false;
     if (options.messageLimit >= 0) {
         if (typeof options.messageLimit !== 'number') {
@@ -848,6 +851,8 @@ Portluck.prototype.setValidOrigin = function(origin) {
     }
 };
 
+Portluck.prototype.allowUndefinedOrigin = true;
+
 // origin headers ARE NOT checked before calling invalidMethodHandler
 // they can be manually checked here by calling this.validateOrigin(msg.headers.origin)
 Portluck.prototype.invalidMethodHandler = function(msg, resp) {
@@ -884,7 +889,7 @@ Portluck.prototype.emit = function(type) {
             }
 
             //call validateOrigin even if they didn't send one since we might require an origin
-            if (!this.validateOrigin(msg.headers.origin)) {
+            if ((!this.allowUndefinedOrigin || msg.headers.origin != null) && !this.validateOrigin(msg.headers.origin)) {
                 debug('invalid origin header sent', msg.headers.origin);
                 resp.writeHead(400);
                 resp.end();
