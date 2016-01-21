@@ -9,7 +9,7 @@
   "dependencies": {
     "buffer-concat-limit": "0.0.1",
     "delimiterstream": "^0.3.0",
-    "ws": "^0.8.1"
+    "ws": "^1.0.1"
   },
   "devDependencies": {
     "nodeunit": "^0.9.0"
@@ -21,10 +21,6 @@
     "type": "git",
     "url": "git://github.com/fastest963/portluck.git"
   },
-  "engines": {
-    "node": ">=0.12.0"
-  },
-  "engineStrict": true,
   "keywords": [
     "http",
     "websocket",
