@@ -4,6 +4,7 @@ var portluck = require('../server.js'),
     https = require('https'),
     fs = require('fs'),
     path = require('path'),
+    WebSocket = require('ws'),
     wdir = path.dirname(module.filename),
     serverOptions = {
         key: fs.readFileSync(path.resolve(wdir, './portluck.key.pem')),
@@ -13,6 +14,8 @@ var portluck = require('../server.js'),
     caFile = fs.readFileSync(path.resolve(wdir, './ca.cert.pem')),
     listenOptions = {port: 14999, host: '127.0.0.1'},
     httpOptions = {port: listenOptions.port, hostname: listenOptions.host, method: 'POST', path: '/', agent: false},
+    wsPath = 'ws://' + listenOptions.host + ':' + listenOptions.port + '/',
+    wssPath = 'ws://' + listenOptions.host + ':' + listenOptions.port + '/',
     testString = '{"test":true}',
     server = new portluck.Server(serverOptions),
     listening = false;
@@ -49,7 +52,7 @@ exports.setUp = function(callback) {
 };
 
 exports.testSimpleSocket = function(test) {
-    test.expect(5);
+    test.expect(7);
     var conn;
     function testNoConnectionsLeft() {
         server.getConnections(function(err, count) {
@@ -62,8 +65,10 @@ exports.testSimpleSocket = function(test) {
         test.ok(socket instanceof net.Socket);
         test.equal(socket.remoteAddress, listenOptions.host);
     });
-    server.once('message', function(message) {
+    server.once('message', function(message, _, socket, source) {
         test.strictEqual(message.toString(), testString);
+        test.ok(socket instanceof net.Socket);
+        test.strictEqual(socket, source);
     });
     server.once('clientDisconnect', function(socket) {
         test.ok(socket instanceof net.Socket);
@@ -148,7 +153,7 @@ exports.testSimpleSocketNoNewLine = function(test) {
 };
 
 exports.testSimpleHTTP = function(test) {
-    test.expect(6);
+    test.expect(9);
     var receivedResp = false,
         receivedDisconnect = false,
         conn;
@@ -163,8 +168,11 @@ exports.testSimpleHTTP = function(test) {
         test.ok(socket instanceof net.Socket);
         test.equal(socket.remoteAddress, listenOptions.host);
     });
-    server.once('message', function(message) {
+    server.once('message', function(message, _, socket, source) {
         test.strictEqual(message.toString(), testString);
+        test.ok(socket instanceof net.Socket);
+        test.ok(source instanceof http.IncomingMessage);
+        test.strictEqual(socket, source.socket);
     });
     server.once('clientDisconnect', function(socket) {
         //wait for the response if we haven't already gotten it
@@ -824,15 +832,90 @@ exports.testNoRawFallback = function(test) {
     conn = net.createConnection(listenOptions, function() {
         conn.write('G');
     });
-    /*conn.setTimeout(6000);
-    conn.once('timeout', function() {
-        conn.destroy();
-        test.ok(false);
-    });*/
     conn.once('close', function() {
         test.equal(gotConnect, false);
         server.rawFallback = true;
         test.done();
+    });
+};
+
+exports.testSimpleWS = function(test) {
+    test.expect(8);
+    var ws;
+
+    function testNoConnectionsLeft() {
+        server.getConnections(function(err, count) {
+            test.equal(count, 0);
+            test.done();
+        });
+    }
+
+    server.removeAllListeners();
+    server.once('clientConnect', function(writer, socket) {
+        test.ok(socket instanceof net.Socket);
+        test.equal(socket.remoteAddress, listenOptions.host);
+    });
+    server.once('message', function(message, writer, socket, source) {
+        test.strictEqual(message.toString(), testString);
+        test.ok(socket instanceof net.Socket);
+        test.ok(source instanceof WebSocket);
+        writer.write('response');
+    });
+    server.once('clientDisconnect', function(socket) {
+        //wait for the response if we haven't already gotten it
+        test.ok(socket instanceof net.Socket);
+        testNoConnectionsLeft();
+    });
+    ws = new WebSocket(wsPath);
+    ws.on('open', function() {
+        ws.send(testString);
+    });
+    ws.on('message', function(msg) {
+        test.equal(msg, 'response');
+        ws.close();
+    });
+    ws.on('error', function() {
+        test.ok(false);
+    });
+};
+
+exports.testSimpleWSS = function(test) {
+    test.expect(8);
+    var ws;
+
+    function testNoConnectionsLeft() {
+        server.getConnections(function(err, count) {
+            test.equal(count, 0);
+            test.done();
+        });
+    }
+
+    server.removeAllListeners();
+    server.once('clientConnect', function(writer, socket) {
+        test.ok(socket instanceof net.Socket);
+        test.equal(socket.remoteAddress, listenOptions.host);
+    });
+    server.once('message', function(message, writer, socket, source) {
+        test.strictEqual(message.toString(), testString);
+        test.ok(socket instanceof net.Socket);
+        test.ok(source instanceof WebSocket);
+        writer.write('response');
+    });
+    server.once('clientDisconnect', function(socket) {
+        //wait for the response if we haven't already gotten it
+        test.ok(socket instanceof net.Socket);
+        testNoConnectionsLeft();
+    });
+    ws = new WebSocket(wssPath);
+    ws.on('open', function() {
+        ws.send(testString);
+    });
+    ws.on('message', function(msg) {
+        test.equal(msg, 'response');
+        ws.close();
+    });
+    ws.on('error', function() {
+        test.ok(false);
     });
 };
 

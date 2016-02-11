@@ -1,5 +1,9 @@
 ## Changelog ##
 
+### 0.4.2 ###
+* Send along `source` to `message` event
+* Added tests for websockets
+
 ### 0.4.1 ###
 * Updated dependencies
 

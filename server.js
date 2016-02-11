@@ -622,7 +622,7 @@ function onNewWSClient(server, listener, socket, writer) {
         if (data.length === 0) {
             return;
         }
-        parentEmit.call(server, 'message', data, writer, socket);
+        parentEmit.call(server, 'message', data, writer, socket, listener);
     });
 }
 
@@ -673,7 +673,7 @@ function pendingConnectionListener(server, socket) {
 function listenForDelimiterData(server, listener, socket, writer) {
     //todo: allow passing in custom delimiter
     var delimiterWrap = DelimiterStream.wrap({dataLimit: server.messageLimit}, function(data) {
-        parentEmit.call(server, 'message', data, writer, socket);
+        parentEmit.call(server, 'message', data, writer, socket, listener);
     });
     listener.on('data', delimiterWrap);
     listener.once('end', function() {
