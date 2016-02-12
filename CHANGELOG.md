@@ -1,5 +1,8 @@
 ## Changelog ##
 
+### 0.4.4 ###
+* Fixed `source` to be `http.incomingMessage` or `net.Socket`
+
 ### 0.4.3 ###
 * Send along `source` to `message` event
 * Added tests for websockets

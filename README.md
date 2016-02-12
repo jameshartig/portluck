@@ -19,14 +19,13 @@ If `messageCallback` is sent, it will be added as a listener for `"message"` eve
 Fired when a client sends a message. Event is sent `(message, writer, socket, source)`. `message` is a buffer containing
 the message received. `writer` is an instance of `ResponseWriter` and can be used to respond to the message.
 `socket` is the source socket that sent the message. You should only read properties off the socket, like
-`remoteAddress` and not use the `write`/`end` methods. `source` is either a `net.Socket`, `http.IncomingMessage`,
-or a `ws.Client`.
+`remoteAddress` and not use the `write`/`end` methods. `source` is either a `net.Socket` or a `http.IncomingMessage`.
 
 ### Event: 'clientConnect' ###
 Fired when a client connects. Event is sent `(writer, socket, source)`. You should only read properties off the socket,
 like `remoteAddress` and not use the `write`/`end` methods. `writer` is an instance of `ResponseWriter` can be
-used to respond. The `writer` has `write`, `end`, and `destroy` methods. `source` is either a `net.Socket`,
-`http.IncomingMessage`, or a `ws.Client`.
+used to respond. The `writer` has `write`, `end`, and `destroy` methods. `source` is either a `net.Socket` or a 
+`http.IncomingMessage`.
 
 ### Event: 'clientDisconnect' ###
 Fired when a client disconnects. Event is sent `socket` which is the socket that disconnected.

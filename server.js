@@ -603,7 +603,7 @@ function onNewHTTPClient(server, listener, socket, writer) {
         });
     }
 }
-function onNewWSClient(server, listener, socket, writer) {
+function onNewWSClient(server, listener, socket, writer, incomingMessage) {
     //ws resets the timeout to 0 for some reason but we want to keep it what the user wants
     //built-in http server automatically fires timeout so we can ignore that here
     socket.setTimeout(server.timeout);
@@ -622,7 +622,7 @@ function onNewWSClient(server, listener, socket, writer) {
         if (data.length === 0) {
             return;
         }
-        parentEmit.call(server, 'message', data, writer, socket, listener);
+        parentEmit.call(server, 'message', data, writer, socket, incomingMessage);
     });
 }
 
@@ -686,7 +686,7 @@ function onUpgrade(req, socket, upgradeHead) {
     var server = this;
     this._wss.handleUpgrade(req, socket, upgradeHead, function(client) {
         var writer = new ResponseWriter(client);
-        onNewWSClient(server, client, socket, writer);
+        onNewWSClient(server, client, socket, writer, req);
     });
 }
 

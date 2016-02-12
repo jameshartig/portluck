@@ -858,7 +858,7 @@ exports.testSimpleWS = function(test) {
     server.once('message', function(message, writer, socket, source) {
         test.strictEqual(message.toString(), testString);
         test.ok(socket instanceof net.Socket);
-        test.ok(source instanceof WebSocket);
+        test.ok(source instanceof http.IncomingMessage);
         writer.write('response');
     });
     server.once('clientDisconnect', function(socket) {
@@ -898,7 +898,7 @@ exports.testSimpleWSS = function(test) {
     server.once('message', function(message, writer, socket, source) {
         test.strictEqual(message.toString(), testString);
         test.ok(socket instanceof net.Socket);
-        test.ok(source instanceof WebSocket);
+        test.ok(source instanceof http.IncomingMessage);
         writer.write('response');
     });
     server.once('clientDisconnect', function(socket) {
